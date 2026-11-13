@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Star Electric - Tender Tracker</title>
+<style>
+*{box-sizing:border-box}
+:root{--navy:#16243f;--navy2:#1d3156;--steco:#3b5ba5;--steco-dk:#2e4a8f;
+ --steco-lt:#8fa8d8;--blue:#1d4ed8;--ink:#16243f;--mute:#6b7a94;--line:#dde3ee;
+ --bg:#f4f6fa;--card:#fff;--green:#157347;--red:#b42318}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);
+ font:13.5px/1.45 "Segoe UI",system-ui,-apple-system,sans-serif}
+.shell{display:flex;min-height:100vh}
+.sidebar{width:214px;flex:0 0 214px;background:var(--navy);color:#dce4f2;
+ display:flex;flex-direction:column;padding:18px 0}
+.brand{display:flex;gap:11px;align-items:center;padding:0 14px 20px}
+.tile{width:54px;height:54px;border-radius:9px;background:#fff;padding:4px;flex:0 0 54px;
+ display:flex;align-items:center;justify-content:center}
+.tile svg{width:100%;height:100%}
+.brand b{display:block;font-size:13px;letter-spacing:.03em;color:#fff;white-space:nowrap}
+.brand span{display:block;font-size:9.5px;letter-spacing:.1em;color:var(--steco-lt);
+ margin-top:3px;white-space:nowrap}
+.navlabel{padding:0 18px 10px;font-size:10px;letter-spacing:.14em;color:#7e92b5}
+.sidebar nav{display:flex;flex-direction:column}
+.sidebar nav button{all:unset;cursor:pointer;padding:12px 18px 12px 26px;font-size:13.5px;
+ color:#dce4f2;border-left:3px solid transparent}
+.sidebar nav button:hover{background:var(--navy2);border-left-color:var(--steco-lt);color:#fff}
+.sidefoot{margin-top:auto;padding:16px 18px 2px;font-size:10.5px;color:#7388ab;line-height:1.5}
+main{flex:1;min-width:0;padding:22px 26px 26px}
+.top{display:flex;align-items:flex-start;gap:16px;margin-bottom:18px;flex-wrap:wrap}
+h1{margin:0;font-size:27px;font-weight:650;letter-spacing:-.01em}
+.sub{margin:5px 0 0;color:var(--mute);font-size:12.5px}
+.top .sp{flex:1}
+button.btn{font:inherit;cursor:pointer;border:1px solid var(--line);background:#fff;
+ color:var(--ink);border-radius:6px;padding:10px 18px}
+button.btn:hover{border-color:var(--steco);color:var(--steco-dk)}
+button.btn.green{background:var(--green);border-color:var(--green);color:#fff;font-weight:600}
+button.btn.red{background:var(--red);border-color:var(--red);color:#fff;font-weight:600}
+button.btn:disabled{opacity:.42;cursor:not-allowed}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:7px;padding:15px 18px}
+.card .k{font-size:10.5px;letter-spacing:.1em;color:var(--mute)}
+.card .v{font-size:31px;font-weight:650;margin-top:7px;line-height:1}
+.note{border:1px solid #cfdcf3;background:#eaf0fa;border-radius:7px;padding:14px 18px;
+ margin-bottom:16px;font-size:12.5px;color:#33415c}
+.note b{color:var(--navy)}
+.drop{border:1.5px dashed #b9c6de;background:#eaf0fa;border-radius:7px;
+ padding:22px;text-align:center;margin-bottom:16px;transition:.15s;cursor:pointer}
+.drop.hot{background:#dde8fb;border-color:var(--steco)}
+.drop b{display:block;font-size:15px;font-weight:600;color:var(--navy)}
+.drop span{display:block;font-size:12px;color:var(--mute);margin-top:7px}
+.drop.busy{opacity:.65;cursor:progress}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.panel .head{display:flex;align-items:center;gap:10px;padding:14px 18px;flex-wrap:wrap}
+.panel .head h2{margin:0;font-size:16px;font-weight:650}
+.panel .head .sp{flex:1}
+.panel .head input,.panel .head select{font:inherit;border:1px solid var(--line);
+ border-radius:5px;padding:7px 9px;background:#fff;color:var(--ink)}
+.panel .head input{width:250px}
+.tablebox{max-height:54vh;overflow:auto;border-top:1px solid var(--line);
+ border-bottom:1px solid var(--line);margin:0 18px}
+table{width:100%;border-collapse:collapse}
+thead th{position:sticky;top:0;background:#eef2f8;color:#51607a;font-size:10.5px;
+ letter-spacing:.07em;text-align:left;padding:11px 10px;border-bottom:1px solid var(--line);
+ white-space:nowrap;z-index:2}
+tbody td{padding:11px 10px;border-bottom:1px solid #eef1f7;vertical-align:top}
+tbody tr.row{cursor:pointer}
+tbody tr.row:hover{background:#f7f9fd}
+tbody tr.row.sel{background:#dbe8fd}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tn{font-weight:600;color:var(--steco-dk);white-space:nowrap}
+.tn .tw{color:var(--mute);font-weight:400}
+.prod{max-width:430px;color:#33415c}
+.rank{font-weight:650}
+.rank.L1{color:var(--green)}.rank.L2{color:#9a6700}.rank.L3{color:#b54708}
+.rank.L4,.rank.L5,.rank.L6,.rank.L7,.rank.L8{color:var(--red)}
+.st{white-space:nowrap}.st.won{color:var(--green);font-weight:600}
+.st.lost{color:var(--red);font-weight:600}
+.agent.none{color:var(--mute)}.dash{color:#aab4c6}
+.subrow td{background:#f7f9fd;padding:0 10px 12px 26px}
+.subrow table{width:auto;min-width:60%}
+.subrow th{position:static;background:transparent;border-bottom:1px solid var(--line);
+ padding:7px 14px 7px 0;font-size:10px}
+.subrow td.c{padding:6px 14px 6px 0;border-bottom:1px solid #eef1f7}
+.actions{display:flex;gap:10px;align-items:center;padding:16px 18px;flex-wrap:wrap}
+.foot{color:var(--mute);font-size:11.5px;padding:10px 2px 0}
+.empty{padding:46px;text-align:center;color:var(--mute)}
+.modal{position:fixed;inset:0;background:#16243fb0;display:none;
+ align-items:center;justify-content:center;z-index:80;padding:20px}
+.modal.on{display:flex}
+.modal .box{background:#fff;border-radius:10px;width:min(430px,100%);
+ box-shadow:0 20px 60px #16243f55;overflow:hidden}
+.modal h3{margin:0;padding:16px 20px;font-size:16px;border-bottom:1px solid var(--line)}
+.modal .body{padding:18px 20px}
+.modal label{display:block;font-size:12px;color:var(--mute);margin-bottom:7px}
+.modal input{width:100%;font:inherit;padding:10px 11px;border:1px solid var(--line);
+ border-radius:6px;color:var(--ink)}
+.modal input:focus{outline:2px solid #cfe0ff;border-color:var(--steco)}
+.modal .foot2{display:flex;justify-content:flex-end;gap:10px;padding:14px 20px;
+ border-top:1px solid var(--line)}
+.modal .pri{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+#toast{position:fixed;right:22px;bottom:22px;background:#fff;border:1px solid var(--line);
+ border-left:4px solid var(--steco);box-shadow:0 8px 26px #16243f22;padding:12px 17px;
+ border-radius:7px;opacity:0;transform:translateY(8px);transition:.22s;pointer-events:none;
+ max-width:420px;z-index:60;white-space:pre-line}
+#toast.show{opacity:1;transform:none}
+#toast.err{border-left-color:var(--red)}
+@media(max-width:1100px){.cards{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:780px){.shell{flex-direction:column}.sidebar{width:100%;flex:none}
+ .prod{max-width:200px}}
+</style></head><body>
+<div class="shell">
+ <aside class="sidebar">
+  <div class="brand">
+   <div class="tile">
+    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-label="Star Electric">
+     <rect x="4" y="16" width="9" height="9" fill="#8fa8d8"/>
+     <rect x="15" y="27" width="7" height="7" fill="#b9c9e8"/>
+     <text x="52" y="17" font-family="Segoe UI,Arial" font-size="15" font-weight="700"
+           fill="#2e4a8f" text-anchor="middle" letter-spacing="1">STECO</text>
+     <circle cx="52" cy="60" r="27" fill="none" stroke="#3b5ba5" stroke-width="7"/>
+     <path d="M66 42 C40 44 36 60 52 64 C68 68 64 84 40 80"
+           fill="none" stroke="#2e4a8f" stroke-width="9" stroke-linecap="round"/>
+    </svg>
+   </div>
+   <div><b>STAR ELECTRIC</b><span>TENDER TRACKER</span></div>
+  </div>
+  <div class="navlabel">WEB VERSION</div>
+  <nav>
+   <button onclick="exportCsv()">Export tender CSV</button>
+   <button onclick="exportJson()">Export data.json</button>
+   <button onclick="reload()">Refresh</button>
+  </nav>
+  <div class="sidefoot">Opens on any device.<br>Edits are saved in<br>this browser.</div>
+ </aside>
+ <main>
+  <div class="top">
+   <div><h1>Tender Overview</h1>
+    <p class="sub">Keep the list lean. Financial details remain inside the original PDF.</p></div>
+   <div class="sp"></div>
+   <button class="btn" id="btnPick">Select PDF(s)</button>
+   <input id="file" type="file" accept="application/pdf,.pdf" multiple hidden>
+  </div>
+  <div class="cards" id="cards"></div>
+  <div class="drop" id="drop">
+   <b>Drop Railway financial tabulation PDFs here</b>
+   <span>or use Select PDF(s) &nbsp;&bull;&nbsp; Consignee-wise parsing happens automatically,
+         right here in your browser</span>
+  </div>
+  <div class="note" id="note"><b>Loading…</b></div>
+  <div class="panel">
+   <div class="head"><h2>Tender Register</h2><div class="sp"></div>
+    <input id="q" placeholder="Search tender, railway, product, consignee...">
+    <select id="fStat"><option value="">All statuses</option>
+     <option>Financial Bid Opened</option><option>Order Received</option>
+     <option>Order Not Received</option></select>
+   </div>
+   <div class="tablebox" id="tablebox"><div class="empty">Loading…</div></div>
+   <div class="actions">
+    <button class="btn" id="aPdf" onclick="viewPdf(SEL)" disabled>View PDF</button>
+    <button class="btn" id="aAgent" onclick="assignAgent()" disabled>Assign agent</button>
+    <button class="btn green" id="aWon" onclick="setStatus('Order Received')" disabled>Order Received</button>
+    <button class="btn red" id="aLost" onclick="setStatus('Order Not Received')" disabled>Order Not Received</button>
+    <button class="btn" id="aOpen" onclick="setStatus('Financial Bid Opened')" disabled>Reopen</button>
+    <div class="sp" style="flex:1"></div>
+    <button class="btn" id="aDel" onclick="deleteTender()" disabled
+            style="color:var(--red)">Delete tender</button>
+   </div>
+  </div>
+  <div class="foot" id="foot"></div>
+ </main>
+</div>
+<div class="modal" id="modal">
+ <div class="box">
+  <h3 id="mTitle">Edit</h3>
+  <div class="body"><label id="mLabel">Value</label><input id="mInput"></div>
+  <div class="foot2">
+   <button class="btn" id="mCancel">Cancel</button>
+   <button class="btn pri" id="mOk">Save</button>
+  </div>
+ </div>
+</div>
+<div id="toast"></div>
+<script src="pdfparse.js"></script>
+<script>
+var T=[], C=[], SEL=null, OPEN={}, DB=null, READY=false;
+
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){
+ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
+function nf(n){return n==null||n===""?"":Number(n).toLocaleString("en-IN");}
+function money(n){if(n==null)return "";
+ if(n>=1e7)return "₹"+(n/1e7).toFixed(2)+" Cr";
+ if(n>=1e5)return "₹"+(n/1e5).toFixed(2)+" L";
+ return "₹"+Number(n).toLocaleString("en-IN");}
+function days(d){if(!d)return null;var t=Date.parse(d+"T00:00:00");
+ return isNaN(t)?null:Math.max(0,Math.round((Date.now()-t)/86400000));}
+function toast(m,bad){var e=document.getElementById("toast");e.textContent=m;
+ e.className="show"+(bad?" err":"");clearTimeout(e._t);
+ e._t=setTimeout(function(){e.className="";},3600);}
+
+function kids(tn){return C.filter(function(c){return c.tender_number===tn;})
+ .sort(function(a,b){return (b.qty||0)-(a.qty||0);});}
+function rate(tn){var k=kids(tn).filter(function(c){return c.star_rate;});
+ return k.length?k[0].star_rate:null;}
+function value(t){var r=rate(t.tender_number);
+ var q=(t.final_qty!=null?t.final_qty:t.qty)||0;return r?q*r:null;}
+
+// The db client may hand back a plain array, a {docs:[...]} wrapper, or entries
+// whose payload sits on .data (value or function). Accept all of them.
+function rows(res){
+ var arr = Array.isArray(res) ? res : (res && Array.isArray(res.docs) ? res.docs : []);
+ return arr.map(function(d){
+  if(!d) return null;
+  var v = (typeof d.data === "function") ? d.data()
+        : (d.data && typeof d.data === "object") ? d.data : d;
+  // Snapshots and their data() are FROZEN. Editing one in place silently
+  // does nothing, so every row is cloned before it reaches the page.
+  return v ? Object.assign({}, v) : null;
+ }).filter(function(x){ return x && (x.tender_number || x.name); });
+}
+
+var STORE_KEY = "star-tender-tracker-v1";
+var PATCH = {tenders:{}, deleted:[], extraTenders:[], consignees:{}, pdfs:{}};
+
+function loadPatch(){
+ try{ var raw=localStorage.getItem(STORE_KEY);
+      if(raw) PATCH = Object.assign(PATCH, JSON.parse(raw)); }
+ catch(e){ /* a corrupt or blocked store just means no local edits */ }
+}
+function savePatch(){
+ try{ localStorage.setItem(STORE_KEY, JSON.stringify(PATCH)); return true; }
+ catch(e){ toast("This browser would not save the change: "+e.message,1); return false; }
+}
+function fail(msg){
+ READY=true;
+ document.getElementById("note").innerHTML="<b>"+esc(msg)+"</b>";
+ document.getElementById("tablebox").innerHTML='<div class="empty">'+esc(msg)+"</div>";
+}
+function applyPatch(base){
+ var list = base.tenders.concat(PATCH.extraTenders||[])
+   .filter(function(t){ return (PATCH.deleted||[]).indexOf(t.tender_number)<0; })
+   .map(function(t){
+     var p=(PATCH.tenders||{})[t.tender_number];
+     return p ? Object.assign({}, t, p) : Object.assign({}, t);
+   });
+ var cons = base.consignees.filter(function(c){
+   return (PATCH.deleted||[]).indexOf(c.tender_number)<0
+       && !(PATCH.consignees||{})[c.tender_number];
+ });
+ for(var tn in (PATCH.consignees||{})){
+   if((PATCH.deleted||[]).indexOf(tn)>=0) continue;
+   cons = cons.concat(PATCH.consignees[tn]);
+ }
+ return {tenders:list, consignees:cons};
+}
+
+var BASE = {tenders:[], consignees:[]};
+(async function(){
+ loadPatch();
+ try{
+  var res = await fetch("data.json", {cache:"no-store"});
+  if(!res.ok) throw new Error("HTTP "+res.status);
+  BASE = await res.json();
+ }catch(e){ fail("Could not load data.json: "+e.message); return; }
+ var merged = applyPatch(BASE);
+ T = merged.tenders; C = merged.consignees;
+ READY = true;
+ document.getElementById("note").innerHTML =
+  "<b>Your changes are saved in this browser.</b> Status, agent, final quantity, "+
+  "imports and deletions stay on this device. Use <b>Export data.json</b> and commit "+
+  "the file to GitHub to make them the shared starting point on every device.";
+ render();
+})();
+
+function persist(){ savePatch(); }
+function patchFor(tn){
+ PATCH.tenders = PATCH.tenders || {};
+ PATCH.tenders[tn] = PATCH.tenders[tn] || {};
+ return PATCH.tenders[tn];
+}
+
+function filtered(){
+ var q=document.getElementById("q").value.toLowerCase().trim();
+ var s=document.getElementById("fStat").value;
+ return T.filter(function(t){
+  if(s&&t.status!==s)return false;
+  if(!q)return true;
+  return [t.tender_number,t.railway,t.product,t.item_code,t.agent,t.rank]
+   .concat(kids(t.tender_number).map(function(c){return c.name;}))
+   .join(" ").toLowerCase().indexOf(q)>=0;});}
+
+function render(){
+ var rows=filtered().sort(function(a,b){return (b.tab_date||"").localeCompare(a.tab_date||"");});
+ var open=T.filter(function(t){return t.status==="Financial Bid Opened";}).length;
+ var won=T.filter(function(t){return t.status==="Order Received";}).length;
+ var lost=T.filter(function(t){return t.status==="Order Not Received";}).length;
+ document.getElementById("cards").innerHTML=
+  card("TOTAL TENDERS",T.length)+card("FINANCIAL BID OPENED",open)+
+  card("ORDERS RECEIVED",won)+card("ORDERS NOT RECEIVED",lost);
+ if(!rows.length){document.getElementById("tablebox").innerHTML=
+  '<div class="empty">No tenders match this search.</div>';}
+ else{
+  var h='<table><thead><tr><th>TENDER NO.</th><th>RAILWAY</th><th>PRODUCT</th>'+
+   '<th class="num">QTY</th><th>RANK</th><th class="num">DAYS SINCE TAB.</th>'+
+   '<th>AGENT</th><th>STATUS</th><th class="num">FINAL QTY</th><th>PDF</th></tr></thead><tbody>';
+  rows.forEach(function(t){
+   var tn=t.tender_number,d=days(t.tab_date),n=kids(tn).length;
+   var stc=t.status==="Order Received"?"won":(t.status==="Order Not Received"?"lost":"");
+   h+='<tr class="row'+(SEL===tn?" sel":"")+'" onclick="pick(\''+esc(tn)+'\')">'+
+    '<td class="tn" onclick="event.stopPropagation();toggle(\''+esc(tn)+'\')">'+
+     (OPEN[tn]?"▾ ":"▸ ")+esc(tn)+(n?' <span class="tw">('+n+')</span>':"")+'</td>'+
+    '<td>'+esc(t.railway)+'</td><td class="prod">'+esc(t.product)+'</td>'+
+    '<td class="num">'+nf(t.qty)+'</td>'+
+    '<td class="rank '+esc(t.rank)+'">'+esc(t.rank)+'</td>'+
+    '<td class="num">'+(d==null?'<span class="dash">—</span>':d)+'</td>'+
+    '<td class="agent'+(t.agent?"":" none")+'" title="Click to assign an agent"'+
+     ' onclick="event.stopPropagation();assignAgent(\''+esc(tn)+'\')">'+
+     esc(t.agent||"Unassigned")+'</td>'+
+    '<td class="st '+stc+'">'+esc(t.status)+'</td>'+
+    '<td class="num">'+(t.final_qty==null?'<span class="dash">—</span>':nf(t.final_qty))+'</td>'+
+    '<td>'+((t.pdf_url||t.has_pdf)
+      ? '<a href="#" onclick="event.preventDefault();event.stopPropagation();viewPdf(\''+esc(tn)+'\')">Open</a>'
+      : '<span class="dash" title="Drop this tabulation PDF above to attach it">—</span>')+'</td></tr>';
+   if(OPEN[tn])h+=sub(t);
+  });
+  document.getElementById("tablebox").innerHTML=h+'</tbody></table>';
+ }
+ var on=!!SEL;
+ ["aPdf","aAgent","aWon","aLost","aOpen","aDel"].forEach(function(i){
+  document.getElementById(i).disabled=!on;});
+ document.getElementById("foot").textContent=T.length+" tenders • shared web copy";
+}
+function card(k,v){return '<div class="card"><div class="k">'+k+'</div><div class="v">'+nf(v)+'</div></div>';}
+function sub(t){
+ var ks=kids(t.tender_number);
+ if(!ks.length)return '<tr class="subrow"><td colspan="10"><div style="padding:10px 0;color:#6b7a94">No consignee lines.</div></td></tr>';
+ var h='<tr class="subrow"><td colspan="10"><table><thead><tr><th>CONSIGNEE</th>'+
+  '<th class="num">QTY</th><th>OUR RANK</th><th class="num">OUR RATE</th>'+
+  '<th class="num">LINE VALUE</th></tr></thead><tbody>';
+ ks.forEach(function(c){
+  h+='<tr><td class="c">'+esc(c.name)+'</td><td class="c num">'+nf(c.qty)+'</td>'+
+   '<td class="c rank '+esc(c.star_rank)+'">'+esc(c.star_rank||"—")+'</td>'+
+   '<td class="c num">'+(c.star_rate==null?"—":nf(c.star_rate))+'</td>'+
+   '<td class="c num">'+((c.star_rate&&c.qty)?money(c.qty*c.star_rate):"—")+'</td></tr>';});
+ return h+'</tbody></table></td></tr>';
+}
+// Artifact pages run sandboxed, where window.prompt is blocked and returns
+// nothing. Ask for input with our own dialog instead.
+function askConfirm(title,message,okLabel){
+ return new Promise(function(resolve){
+  var m=document.getElementById("modal"), i=document.getElementById("mInput");
+  document.getElementById("mTitle").textContent=title;
+  document.getElementById("mLabel").textContent=message;
+  i.style.display="none";
+  var ok=document.getElementById("mOk"); ok.textContent=okLabel||"Delete";
+  m.className="modal on";
+  function done(v){
+   m.className="modal"; i.style.display=""; ok.textContent="Save";
+   ok.onclick=null; document.getElementById("mCancel").onclick=null;
+   resolve(v);
+  }
+  ok.onclick=function(){done(true);};
+  document.getElementById("mCancel").onclick=function(){done(false);};
+ });
+}
+
+function askText(title,label,value,numeric){
+ return new Promise(function(resolve){
+  var m=document.getElementById("modal"), i=document.getElementById("mInput");
+  document.getElementById("mTitle").textContent=title;
+  document.getElementById("mLabel").textContent=label;
+  i.type=numeric?"number":"text";
+  i.value=(value==null?"":String(value));
+  m.className="modal on";
+  setTimeout(function(){i.focus();i.select();},30);
+  function done(v){
+   m.className="modal";
+   document.getElementById("mOk").onclick=null;
+   document.getElementById("mCancel").onclick=null;
+   i.onkeydown=null;
+   resolve(v);
+  }
+  document.getElementById("mOk").onclick=function(){done(i.value);};
+  document.getElementById("mCancel").onclick=function(){done(null);};
+  i.onkeydown=function(e){
+   if(e.key==="Enter"){e.preventDefault();done(i.value);}
+   if(e.key==="Escape"){e.preventDefault();done(null);}
+  };
+ });
+}
+
+function pick(tn){SEL=(SEL===tn?null:tn);render();}
+function toggle(tn){OPEN[tn]=!OPEN[tn];render();}
+function cur(){return T.filter(function(t){return t.tender_number===SEL;})[0];}
+
+function docId(s){ return String(s).replace(/[^A-Za-z0-9_.~:@+-]/g,"_"); }
+async function save(t){
+ var p = patchFor(t.tender_number);
+ p.agent = t.agent||""; p.status = t.status;
+ p.final_qty = (t.final_qty==null?null:t.final_qty);
+ if(!savePatch()) throw new Error("the browser refused to store it");
+}
+
+async function assignAgent(tn){
+ var t=tn?T.filter(function(x){return x.tender_number===tn;})[0]:cur();
+ if(!t)return;
+ var v=await askText("Assign agent","Agent for tender "+t.tender_number,t.agent||"",false);
+ if(v===null)return;
+ var before=t.agent;
+ t.agent=v.trim(); render();
+ try{ await save(t); toast(t.agent?("Agent set to "+t.agent+"."):"Agent cleared."); }
+ catch(e){ t.agent=before; render(); toast("Could not save the agent: "+e.message,1); }}
+async function setStatus(st){var t=cur();if(!t)return;
+ if(st==="Order Received"){
+  var v=await askText("Order received","Final ordered quantity for "+t.tender_number,
+                      t.final_qty!=null?t.final_qty:t.qty,true);
+  if(v===null)return;
+  t.final_qty=(v===""?null:Number(v));
+ } else t.final_qty=null;
+ var bs=t.status, bq=t.final_qty;
+ t.status=st; render();
+ try{ await save(t); toast(t.tender_number+" marked "+st+"."); }
+ catch(e){ t.status=bs; t.final_qty=bq; render();
+           toast("Could not save the status: "+e.message,1); }}
+async function deleteTender(){
+ var t=cur(); if(!t) return;
+ var n=kids(t.tender_number).length;
+ var ok=await askConfirm("Delete tender "+t.tender_number,
+   "This removes the tender"+(n?" and its "+n+" consignee line"+(n>1?"s":""):"")+
+   " from this browser. Export data.json and commit it to make the removal permanent.",
+   "Delete");
+ if(!ok) return;
+ var tn=t.tender_number;
+ PATCH.deleted = (PATCH.deleted||[]);
+ if(PATCH.deleted.indexOf(tn)<0) PATCH.deleted.push(tn);
+ PATCH.extraTenders = (PATCH.extraTenders||[]).filter(function(x){return x.tender_number!==tn;});
+ if(PATCH.tenders) delete PATCH.tenders[tn];
+ if(PATCH.consignees) delete PATCH.consignees[tn];
+ if(PATCH.pdfs) delete PATCH.pdfs[tn];
+ savePatch();
+ SEL=null;
+ T=T.filter(function(x){return x.tender_number!==tn;});
+ C=C.filter(function(x){return x.tender_number!==tn;});
+ render();
+ toast("Tender "+tn+" deleted on this device.");
+}
+
+function reload(){location.reload();}
+// The committed data.json is the starting point every device loads. Exporting
+// writes the current view back out, so local edits can be made the shared copy.
+function exportJson(){
+ var out = {generated:new Date().toISOString().slice(0,10),
+            tenders:T.map(function(t){
+              return {tender_number:t.tender_number, railway:t.railway, product:t.product,
+                      item_code:t.item_code, qty:t.qty, rank:t.rank, tab_date:t.tab_date,
+                      agent:t.agent||"", status:t.status,
+                      final_qty:(t.final_qty==null?null:t.final_qty),
+                      pdf_url:t.pdf_url||"", pdf_name:t.pdf_name||""};
+            }),
+            consignees:C.map(function(c){
+              return {tender_number:c.tender_number, name:c.name, qty:c.qty,
+                      star_rank:c.star_rank, star_rate:c.star_rate};
+            })};
+ var a=document.createElement("a");
+ a.href=URL.createObjectURL(new Blob([JSON.stringify(out,null,2)],{type:"application/json"}));
+ a.download="data.json"; a.click();
+ toast("data.json downloaded. Commit it to the repository to share these changes.");
+}
+function exportCsv(){
+ var rows=[["Tender No","Railway","Product","Item Code","Qty","Rank","Tab Date","Status",
+  "Final Qty","Agent","Consignee","Consignee Qty","Consignee Rank","Consignee Rate"]];
+ T.forEach(function(t){
+  var base=[t.tender_number,t.railway,t.product,t.item_code,t.qty,t.rank,t.tab_date,
+   t.status,t.final_qty==null?"":t.final_qty,t.agent];
+  var ks=kids(t.tender_number);
+  if(ks.length)ks.forEach(function(c){rows.push(base.concat(
+   [c.name,c.qty,c.star_rank,c.star_rate==null?"":c.star_rate]));});
+  else rows.push(base.concat(["","","",""]));});
+ var csv=rows.map(function(r){return r.map(function(v){
+  v=v==null?"":String(v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}).join(",");}).join("\n");
+ var a=document.createElement("a");
+ a.href=URL.createObjectURL(new Blob(["﻿"+csv],{type:"text/csv"}));
+ a.download="star_tenders.csv";a.click();}
+function b64encode(buf){
+ var u=new Uint8Array(buf), s="", CH=0x8000;
+ for(var i=0;i<u.length;i+=CH) s+=String.fromCharCode.apply(null,u.subarray(i,i+CH));
+ return btoa(s);
+}
+function b64decode(b64){
+ var bin=atob(b64), u=new Uint8Array(bin.length);
+ for(var i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i);
+ return u;
+}
+function closePdf(){}
+function pdfHref(t){
+ if(t.pdf_url) return t.pdf_url;
+ var b = (PATCH.pdfs||{})[t.tender_number];
+ return b ? URL.createObjectURL(new Blob([b64decode(b)],{type:"application/pdf"})) : null;
+}
+function viewPdf(tn){
+ var t = T.filter(function(x){return x.tender_number===tn;})[0];
+ if(!t) return;
+ var href = pdfHref(t);
+ if(!href){ toast("No tabulation PDF for "+tn+" yet. Drop its PDF on the box above.",1); return; }
+ window.open(href, "_blank");
+}
+
+// ---- PDF import ------------------------------------------------------
+// Parsing runs in this browser (see pdfparse.js); the file is never uploaded.
+async function upsertParsed(r){
+ var tn = r.tender_number;
+ var existing = T.filter(function(x){return x.tender_number===tn;})[0];
+ PATCH.deleted = (PATCH.deleted||[]).filter(function(x){return x!==tn;});
+ var fields = {railway:r.railway, product:r.product, item_code:r.item_code,
+               qty:r.qty, rank:r.rank, tab_date:r.tab_date};
+ if(r.pdf_b64){
+  PATCH.pdfs = PATCH.pdfs || {};
+  PATCH.pdfs[tn] = r.pdf_b64;
+  fields.pdf_name = r.pdf_name || "";
+ }
+ if(existing){
+  Object.assign(patchFor(tn), fields);
+ }else{
+  PATCH.extraTenders = PATCH.extraTenders || [];
+  PATCH.extraTenders.push(Object.assign({tender_number:tn, agent:"",
+    status:"Financial Bid Opened", final_qty:null, pdf_url:"",
+    pdf_name:r.pdf_name||""}, fields));
+ }
+ PATCH.consignees = PATCH.consignees || {};
+ PATCH.consignees[tn] = r.consignees.map(function(c){
+  return {tender_number:tn, name:c.name, qty:c.qty,
+          star_rank:c.star_rank, star_rate:c.star_rate};
+ });
+ if(!savePatch()) throw new Error("the browser refused to store this import "+
+   "(it may be out of space \u2014 try fewer PDFs at once)");
+ return existing ? "updated" : "added";
+}
+
+function setBusy(on,msg){
+ var dz=document.getElementById("drop");
+ dz.className = on ? "drop busy" : "drop";
+ dz.querySelector("b").textContent = on ? msg : "Drop Railway financial tabulation PDFs here";
+}
+
+async function importFiles(list){
+ var files=[].slice.call(list).filter(function(f){return /\.pdf$/i.test(f.name);});
+ if(!files.length){ toast("Those are not PDF files.",1); return; }
+ var added=0, updated=0, errs=[];
+ for(var i=0;i<files.length;i++){
+  var f=files[i];
+  setBusy(true,"Reading "+f.name+" ("+(i+1)+" of "+files.length+")...");
+  try{
+   var buf = await f.arrayBuffer();
+   var parsed = await TenderPdf.parsePdfFile(buf);
+   parsed.pdf_b64 = b64encode(buf);
+   parsed.pdf_name = f.name;
+   var action = await upsertParsed(parsed);
+   if(action==="added") added++; else updated++;
+   if(parsed.warnings.length) errs.push(parsed.tender_number+": "+parsed.warnings.join("; "));
+  }catch(e){ errs.push(f.name+": "+(e.message||e)); }
+ }
+ setBusy(false);
+ var merged = applyPatch(BASE);
+ T = merged.tenders; C = merged.consignees;
+ render();
+ var msg = "Imported "+added+" new, refreshed "+updated+".";
+ if(errs.length) msg += "\n"+errs.join("\n");
+ toast(msg, errs.length?1:0);
+}
+
+var dz=document.getElementById("drop");
+["dragenter","dragover"].forEach(function(ev){dz.addEventListener(ev,function(e){
+ e.preventDefault(); dz.classList.add("hot");});});
+["dragleave","drop"].forEach(function(ev){dz.addEventListener(ev,function(e){
+ e.preventDefault(); dz.classList.remove("hot");});});
+dz.addEventListener("drop",function(e){ importFiles(e.dataTransfer.files); });
+dz.addEventListener("click",function(){ document.getElementById("file").click(); });
+document.getElementById("btnPick").onclick=function(){ document.getElementById("file").click(); };
+document.getElementById("file").addEventListener("change",function(e){
+ importFiles(e.target.files); e.target.value="";});
+window.addEventListener("dragover",function(e){e.preventDefault();});
+window.addEventListener("drop",function(e){e.preventDefault();});
+
+["q","fStat"].forEach(function(id){
+ document.getElementById(id).addEventListener("input",function(){if(READY)render();});});
+</script></body></html>
