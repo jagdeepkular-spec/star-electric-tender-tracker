@@ -160,8 +160,8 @@
       "rank": "L3",
       "tab_date": "2026-08-17",
       "agent": "Sachit",
-      "status": "Financial Bid Opened",
-      "final_qty": null,
+      "status": "Order Received",
+      "final_qty": 1747,
       "split": "",
       "pdf_url": "pdfs/29261064.pdf",
       "pdf_name": "FIN-TAB-29261064-107123510.pdf"
