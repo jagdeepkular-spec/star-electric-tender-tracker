@@ -21,6 +21,21 @@
 
 const SESSION_DAYS = 30;
 
+/* Non-secret configuration. These are plain settings, not credentials, so they
+   live here rather than as dashboard variables - one less thing to configure,
+   and the dashboard's variable editor has been unreliable. An environment
+   variable of the same name still wins if one is set. */
+const CONFIG = {
+  ALLOWED_LOGINS: "jagdeepkular-spec",
+  ALLOWED_ORIGIN: "https://jagdeepkular-spec.github.io",
+  REPO_OWNER: "jagdeepkular-spec",
+  REPO_NAME: "star-electric-tender-tracker",
+  REPO_BRANCH: "main",
+};
+function cfg(env, name) {
+  return (env && env[name]) || CONFIG[name];
+}
+
 /* ------------------------------------------------------------- utilities */
 
 const enc = new TextEncoder();
@@ -70,7 +85,7 @@ async function readSession(token, secret) {
 
 function cors(env, extra) {
   return Object.assign({
-    "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*",
+    "Access-Control-Allow-Origin": cfg(env, "ALLOWED_ORIGIN") || "*",
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Max-Age": "86400",
@@ -86,8 +101,9 @@ function json(env, obj, status) {
 /* ------------------------------------------------------------------ routes */
 
 async function handleLogin(url, env) {
-  const back = url.searchParams.get("redirect") || env.ALLOWED_ORIGIN;
-  if (env.ALLOWED_ORIGIN && back.indexOf(env.ALLOWED_ORIGIN) !== 0) {
+  const back = url.searchParams.get("redirect") || cfg(env, "ALLOWED_ORIGIN");
+  const origin = cfg(env, "ALLOWED_ORIGIN");
+  if (origin && back.indexOf(origin) !== 0) {
     return new Response("Refusing to send the sign-in back to another site.", { status: 400 });
   }
   const state = b64url(enc.encode(JSON.stringify({ back: back, n: crypto.randomUUID() })));
@@ -106,11 +122,12 @@ function finish(back, hash) {
 async function handleCallback(url, env) {
   const code = url.searchParams.get("code");
   const stateRaw = url.searchParams.get("state") || "";
-  let back = env.ALLOWED_ORIGIN;
+  let back = cfg(env, "ALLOWED_ORIGIN");
   try {
     back = JSON.parse(new TextDecoder().decode(b64urlToBytes(stateRaw))).back || back;
   } catch (e) { /* fall back to the configured origin */ }
-  if (env.ALLOWED_ORIGIN && back.indexOf(env.ALLOWED_ORIGIN) !== 0) back = env.ALLOWED_ORIGIN;
+  const origin = cfg(env, "ALLOWED_ORIGIN");
+  if (origin && back.indexOf(origin) !== 0) back = origin;
   if (!code) return finish(back, "#error=" + encodeURIComponent("GitHub sent no code"));
 
   const res = await fetch("https://github.com/login/oauth/access_token", {
@@ -138,7 +155,7 @@ async function handleCallback(url, env) {
   if (!who.ok) return finish(back, "#error=" + encodeURIComponent("could not read the GitHub account"));
   const user = await who.json();
 
-  const allowed = String(env.ALLOWED_LOGINS || "")
+  const allowed = String(cfg(env, "ALLOWED_LOGINS") || "")
     .split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
   if (allowed.length && allowed.indexOf(String(user.login).toLowerCase()) < 0) {
     return finish(back, "#error=" + encodeURIComponent(
@@ -177,12 +194,12 @@ async function handleCommit(request, env) {
     return json(env, { error: "No content" }, 400);
   }
 
-  const api = "https://api.github.com/repos/" + env.REPO_OWNER + "/" +
-              env.REPO_NAME + "/contents/" + path;
+  const api = "https://api.github.com/repos/" + cfg(env, "REPO_OWNER") + "/" +
+              cfg(env, "REPO_NAME") + "/contents/" + path;
   const payload = {
     message: (body.message || "Update from the tracker") + "\n\nSigned in as " + s.login,
     content: body.content,
-    branch: env.REPO_BRANCH || "main",
+    branch: cfg(env, "REPO_BRANCH") || "main",
   };
   if (body.sha) payload.sha = body.sha;
 
