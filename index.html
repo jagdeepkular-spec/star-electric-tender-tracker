@@ -385,11 +385,13 @@ function setBanner(){
  var el = document.getElementById("note");
  if(!el) return;
  if(SYNCED){
-  el.className = "note good";
-  el.innerHTML = "<span><b>Sharing is on.</b> Every change here is saved to GitHub, so it "+
-   "shows on all your devices.</span>";
+  // Nothing to say when it is working - the sidebar already shows the state,
+  // and a permanent banner just eats the space the register wants.
+  el.style.display = "none";
+  el.innerHTML = "";
   return;
  }
+ el.style.display = "";
  var n = pendingCount();
  el.className = "note warn";
  el.innerHTML = "<span><b>Sharing is off \u2014 changes stay in this browser only.</b> "+
@@ -407,7 +409,14 @@ function setSync(state){
                    nav.textContent="Sharing: on"; }
  else if(state==="saving"){ foot.innerHTML="Saving to GitHub&hellip;"; }
  else if(state==="error"){ foot.innerHTML="Last save to GitHub failed.<br>Change kept locally.";
-                           nav.textContent="Sharing: check"; }
+                           nav.textContent="Sharing: check";
+                           var b=document.getElementById("note");
+                           if(b){ b.style.display=""; b.className="note warn";
+                            b.innerHTML="<span><b>The last save to GitHub failed.</b> Your change is "+
+                             "kept in this browser. Check the token under Sharing, then edit again "+
+                             "to retry.</span><div class='sp'></div>"+
+                             "<button class='btn' onclick='connectGitHub()'>Sharing</button>"; }
+                           return; }
  else { foot.innerHTML="Changes stay in this browser.<br>Turn on sharing to sync.";
         nav.textContent="Sharing: off"; }
  setBanner();
