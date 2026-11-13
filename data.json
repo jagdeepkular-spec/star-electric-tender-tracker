@@ -12,9 +12,9 @@
       "agent": "Satya",
       "status": "Financial Bid Opened",
       "final_qty": null,
+      "split": "",
       "pdf_url": "pdfs/40260055.pdf",
-      "pdf_name": "FIN-TAB-40260055-107206611 (2).pdf",
-      "split": ""
+      "pdf_name": "FIN-TAB-40260055-107206611 (2).pdf"
     },
     {
       "tender_number": "03264855A",
@@ -27,9 +27,9 @@
       "agent": "",
       "status": "Financial Bid Opened",
       "final_qty": null,
+      "split": "",
       "pdf_url": "pdfs/03264855A.pdf",
-      "pdf_name": "FIN-TAB-03264855A-107214978.pdf",
-      "split": ""
+      "pdf_name": "FIN-TAB-03264855A-107214978.pdf"
     },
     {
       "tender_number": "LB265069",
@@ -42,9 +42,9 @@
       "agent": "",
       "status": "Financial Bid Opened",
       "final_qty": null,
+      "split": "",
       "pdf_url": "pdfs/LB265069.pdf",
-      "pdf_name": "FIN-TAB-LB265069-107203466.pdf",
-      "split": ""
+      "pdf_name": "FIN-TAB-LB265069-107203466.pdf"
     },
     {
       "tender_number": "15261045A",
@@ -57,9 +57,9 @@
       "agent": "Mohan",
       "status": "Financial Bid Opened",
       "final_qty": null,
+      "split": "",
       "pdf_url": "pdfs/15261045A.pdf",
-      "pdf_name": "FIN-TAB-15261045A-107180958.pdf",
-      "split": ""
+      "pdf_name": "FIN-TAB-15261045A-107180958.pdf"
     },
     {
       "tender_number": "04262477",
@@ -72,9 +72,9 @@
       "agent": "",
       "status": "Financial Bid Opened",
       "final_qty": null,
+      "split": "",
       "pdf_url": "pdfs/04262477.pdf",
-      "pdf_name": "FIN-TAB-04262477-107190839.pdf",
-      "split": ""
+      "pdf_name": "FIN-TAB-04262477-107190839.pdf"
     },
     {
       "tender_number": "04261090",
@@ -87,9 +87,9 @@
       "agent": "",
       "status": "Financial Bid Opened",
       "final_qty": null,
+      "split": "",
       "pdf_url": "pdfs/04261090.pdf",
-      "pdf_name": "FIN-TAB-04261090-107183218.pdf",
-      "split": ""
+      "pdf_name": "FIN-TAB-04261090-107183218.pdf"
     },
     {
       "tender_number": "11260401",
@@ -102,9 +102,9 @@
       "agent": "Mohan",
       "status": "Financial Bid Opened",
       "final_qty": null,
+      "split": "",
       "pdf_url": "pdfs/11260401.pdf",
-      "pdf_name": "FIN-TAB-11260401-107175335.pdf",
-      "split": ""
+      "pdf_name": "FIN-TAB-11260401-107175335.pdf"
     },
     {
       "tender_number": "14261142",
@@ -117,9 +117,9 @@
       "agent": "",
       "status": "Financial Bid Opened",
       "final_qty": null,
+      "split": "60:40",
       "pdf_url": "pdfs/14261142.pdf",
-      "pdf_name": "FIN-TAB-14261142-107152793.pdf",
-      "split": ""
+      "pdf_name": "FIN-TAB-14261142-107152793.pdf"
     },
     {
       "tender_number": "30261143",
@@ -132,9 +132,9 @@
       "agent": "Sachit",
       "status": "Financial Bid Opened",
       "final_qty": null,
+      "split": "",
       "pdf_url": "pdfs/30261143.pdf",
-      "pdf_name": "FIN-TAB-30261143-107127524.pdf",
-      "split": ""
+      "pdf_name": "FIN-TAB-30261143-107127524.pdf"
     },
     {
       "tender_number": "29261029",
@@ -147,9 +147,9 @@
       "agent": "Sachit",
       "status": "Financial Bid Opened",
       "final_qty": null,
+      "split": "60:40",
       "pdf_url": "pdfs/29261029.pdf",
-      "pdf_name": "FIN-TAB-29261029-107125285.pdf",
-      "split": ""
+      "pdf_name": "FIN-TAB-29261029-107125285.pdf"
     },
     {
       "tender_number": "29261064",
@@ -160,11 +160,11 @@
       "rank": "L3",
       "tab_date": "2026-08-17",
       "agent": "Sachit",
-      "status": "Financial Bid Opened",
-      "final_qty": null,
+      "status": "Order Received",
+      "final_qty": 1747,
+      "split": "",
       "pdf_url": "pdfs/29261064.pdf",
-      "pdf_name": "FIN-TAB-29261064-107123510.pdf",
-      "split": ""
+      "pdf_name": "FIN-TAB-29261064-107123510.pdf"
     }
   ],
   "consignees": [
