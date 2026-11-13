@@ -61,10 +61,12 @@ button.btn:disabled{opacity:.42;cursor:not-allowed}
 .panel .head input,.panel .head select{font:inherit;border:1px solid var(--line);
  border-radius:5px;padding:7px 9px;background:#fff;color:var(--ink)}
 .panel .head input{width:250px}
-.tablebox{max-height:54vh;overflow:auto;border-top:1px solid var(--line);
+/* The whole register is shown at once: no box of its own to scroll, so the
+   page scrolls instead and every tender is reachable by eye. */
+.tablebox{overflow:visible;border-top:1px solid var(--line);
  border-bottom:1px solid var(--line);margin:0 18px}
 table{width:100%;border-collapse:collapse}
-thead th{position:sticky;top:0;background:#eef2f8;color:#51607a;font-size:10.5px;
+thead th{position:sticky;top:0;background:#eef2f8;box-shadow:0 1px 0 var(--line);color:#51607a;font-size:10.5px;
  letter-spacing:.07em;text-align:left;padding:11px 10px;border-bottom:1px solid var(--line);
  white-space:nowrap;z-index:2}
 tbody td{padding:11px 10px;border-bottom:1px solid #eef1f7;vertical-align:top}
