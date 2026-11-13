@@ -134,22 +134,22 @@ tbody tr.row.sel{background:#dbe8fd}
   <nav>
    <button onclick="exportCsv()">Export tender CSV</button>
    <button onclick="exportJson()">Export data.json</button>
-   <button onclick="reload()">Refresh</button>
+   <button onclick="reload()">Reload from GitHub</button>
+   <button onclick="connectGitHub()" id="navSync">Sharing&hellip;</button>
   </nav>
-  <div class="sidefoot">Opens on any device.<br>Edits are saved in<br>this browser.</div>
+  <div class="sidefoot" id="syncFoot">Checking sharing&hellip;</div>
  </aside>
  <main>
   <div class="top">
    <div><h1>Tender Overview</h1>
     <p class="sub">Keep the list lean. Financial details remain inside the original PDF.</p></div>
    <div class="sp"></div>
-   <button class="btn" id="btnPick">Select PDF(s)</button>
    <input id="file" type="file" accept="application/pdf,.pdf" multiple hidden>
   </div>
   <div class="cards" id="cards"></div>
   <div class="drop" id="drop">
    <b>Drop Railway financial tabulation PDFs here</b>
-   <span>or use Select PDF(s) &nbsp;&bull;&nbsp; Consignee-wise parsing happens automatically,
+   <span>click here to choose files &nbsp;&bull;&nbsp; consignee-wise parsing happens automatically,
          right here in your browser</span>
   </div>
   <div class="note" id="note"><b>Loading…</b></div>
@@ -254,12 +254,163 @@ function rows(res){
 }
 
 var STORE_KEY = "star-tender-tracker-v1";
+var TOKEN_KEY = "star-tender-github-token";
+var GH = {owner:"jagdeepkular-spec", repo:"star-electric-tender-tracker",
+          branch:"main", file:"data.json"};
+var DATA_SHA = null;          // sha of data.json as we last read it
+var SYNCED = false;           // true once a token is present and working
 var PATCH = {tenders:{}, deleted:[], extraTenders:[], consignees:{}, pdfs:{}};
+
+function ghToken(){ try{ return localStorage.getItem(TOKEN_KEY)||""; }catch(e){ return ""; } }
+function ghHeaders(extra){
+ var h = {"Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"};
+ var t = ghToken();
+ if(t) h["Authorization"] = "Bearer "+t;
+ return Object.assign(h, extra||{});
+}
+function ghUrl(path){
+ return "https://api.github.com/repos/"+GH.owner+"/"+GH.repo+"/contents/"+path;
+}
+function b64ToStr(b64){
+ var bin = atob(String(b64).replace(/\n/g,""));
+ var u = new Uint8Array(bin.length);
+ for(var i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i);
+ return new TextDecoder().decode(u);
+}
+function strToB64(str){
+ var u = new TextEncoder().encode(str), s="", CH=0x8000;
+ for(var i=0;i<u.length;i+=CH) s+=String.fromCharCode.apply(null,u.subarray(i,i+CH));
+ return btoa(s);
+}
+
+// Always read through the API: it returns the newest commit's content, where a
+// plain file request can be served from a CDN cache minutes behind.
+async function ghReadData(){
+ var res = await fetch(ghUrl(GH.file)+"?ref="+GH.branch,
+                       {headers:ghHeaders(), cache:"no-store"});
+ if(!res.ok) throw new Error("GitHub read failed: HTTP "+res.status);
+ var j = await res.json();
+ DATA_SHA = j.sha;
+ return JSON.parse(b64ToStr(j.content));
+}
+
+async function ghWrite(path, contentB64, message, sha){
+ var body = {message:message, content:contentB64, branch:GH.branch};
+ if(sha) body.sha = sha;
+ var res = await fetch(ghUrl(path), {method:"PUT", headers:ghHeaders(
+   {"Content-Type":"application/json"}), body:JSON.stringify(body)});
+ if(res.status===409 || res.status===422){
+  var e=new Error("conflict"); e.conflict=true; throw e;
+ }
+ if(!res.ok){
+  var txt=""; try{ txt=(await res.json()).message||""; }catch(_){}
+  throw new Error("HTTP "+res.status+(txt?" - "+txt:""));
+ }
+ return await res.json();
+}
+
+function currentData(){
+ return {generated:new Date().toISOString().slice(0,10),
+  tenders:T.map(function(t){
+   return {tender_number:t.tender_number, railway:t.railway, product:t.product,
+           item_code:t.item_code, qty:t.qty, rank:t.rank, tab_date:t.tab_date,
+           agent:t.agent||"", status:t.status,
+           final_qty:(t.final_qty==null?null:t.final_qty), split:t.split||"",
+           pdf_url:t.pdf_url||"", pdf_name:t.pdf_name||""};
+  }),
+  consignees:C.map(function(c){
+   return {tender_number:c.tender_number, name:c.name, qty:c.qty,
+           star_rank:c.star_rank, star_rate:c.star_rate};
+  })};
+}
+
+var pushQueue = Promise.resolve();
+function pushData(what){
+ // Serialised: one commit at a time, so two quick edits cannot race.
+ pushQueue = pushQueue.then(function(){ return doPush(what); })
+                      .catch(function(){ /* reported in doPush */ });
+ return pushQueue;
+}
+async function doPush(what){
+ if(!SYNCED) return;
+ setSync("saving");
+ for(var attempt=0; attempt<2; attempt++){
+  try{
+   await ghWrite(GH.file, strToB64(JSON.stringify(currentData(),null,2)),
+                 what||"Update tender register", DATA_SHA);
+   var fresh = await ghReadData();   // refresh the sha for the next write
+   PATCH = {tenders:{}, deleted:[], extraTenders:[], consignees:{}, pdfs:PATCH.pdfs};
+   savePatch();
+   setSync("ok");
+   return;
+  }catch(e){
+   if(e.conflict && attempt===0){
+    // Someone else committed first: take their version as the base, then
+    // re-apply this device's pending change on top.
+    try{
+     var base = await ghReadData();
+     var merged = applyPatch(base);
+     T = merged.tenders; C = merged.consignees; BASE = base; render();
+     continue;
+    }catch(e2){ /* fall through to the error below */ }
+   }
+   setSync("error");
+   toast("Could not save to GitHub: "+(e.message||e)+
+         "\nYour change is kept in this browser.",1);
+   return;
+  }
+ }
+}
+
+function setSync(state){
+ var foot=document.getElementById("syncFoot"), nav=document.getElementById("navSync");
+ if(!foot) return;
+ if(state==="ok"){ foot.innerHTML="Shared with every device.<br>Saved to GitHub.";
+                   nav.textContent="Sharing: on"; }
+ else if(state==="saving"){ foot.innerHTML="Saving to GitHub&hellip;"; }
+ else if(state==="error"){ foot.innerHTML="Last save to GitHub failed.<br>Change kept locally.";
+                           nav.textContent="Sharing: check"; }
+ else { foot.innerHTML="Changes stay in this browser.<br>Turn on sharing to sync.";
+        nav.textContent="Sharing: off"; }
+}
+
+async function connectGitHub(){
+ if(SYNCED){
+  var off=await askConfirm("Sharing is on",
+   "Changes on this device are saved to GitHub and reach every device. "+
+   "Turn sharing off on this device?","Turn off");
+  if(off){ try{ localStorage.removeItem(TOKEN_KEY); }catch(e){}
+           SYNCED=false; setSync("off"); toast("Sharing turned off on this device."); }
+  return;
+ }
+ var v=await askText("Turn on sharing",
+  "Paste a GitHub token with Contents read and write on this repository. "+
+  "It is stored only in this browser and sent only to github.com.",
+  "", "password");
+ if(v===null) return;
+ v=String(v).trim();
+ if(!v) return;
+ try{ localStorage.setItem(TOKEN_KEY, v); }catch(e){ toast("This browser would not store the token.",1); return; }
+ setSync("saving");
+ try{
+  var base=await ghReadData();     // proves the token can read
+  await ghWrite(GH.file, strToB64(JSON.stringify(currentData(),null,2)),
+                "Enable sharing from browser", DATA_SHA);  // proves it can write
+  await ghReadData();
+  SYNCED=true; setSync("ok");
+  PATCH={tenders:{},deleted:[],extraTenders:[],consignees:{},pdfs:PATCH.pdfs}; savePatch();
+  toast("Sharing is on. Changes from this device now reach every device.");
+ }catch(e){
+  try{ localStorage.removeItem(TOKEN_KEY); }catch(_){}
+  SYNCED=false; setSync("error");
+  toast("That token did not work: "+(e.message||e),1);
+ }
+}
 
 function loadPatch(){
  try{ var raw=localStorage.getItem(STORE_KEY);
       if(raw) PATCH = Object.assign(PATCH, JSON.parse(raw)); }
- catch(e){ /* a corrupt or blocked store just means no local edits */ }
+ catch(e){ }
 }
 function savePatch(){
  try{ localStorage.setItem(STORE_KEY, JSON.stringify(PATCH)); return true; }
@@ -292,17 +443,25 @@ var BASE = {tenders:[], consignees:[]};
 (async function(){
  loadPatch();
  try{
-  var res = await fetch("data.json", {cache:"no-store"});
-  if(!res.ok) throw new Error("HTTP "+res.status);
-  BASE = await res.json();
- }catch(e){ fail("Could not load data.json: "+e.message); return; }
+  BASE = await ghReadData();
+  SYNCED = !!ghToken();
+ }catch(e){
+  // No API (rate limit, offline): fall back to the committed copy, read-only sharing.
+  try{
+   var res = await fetch("data.json?t="+Date.now(), {cache:"no-store"});
+   if(!res.ok) throw new Error("HTTP "+res.status);
+   BASE = await res.json();
+  }catch(e2){ fail("Could not load the register: "+e2.message); return; }
+ }
  var merged = applyPatch(BASE);
  T = merged.tenders; C = merged.consignees;
  READY = true;
- document.getElementById("note").innerHTML =
-  "<b>Your changes are saved in this browser.</b> Status, agent, final quantity, "+
-  "imports and deletions stay on this device. Use <b>Export data.json</b> and commit "+
-  "the file to GitHub to make them the shared starting point on every device.";
+ setSync(SYNCED ? "ok" : "off");
+ document.getElementById("note").innerHTML = SYNCED
+  ? "<b>Sharing is on.</b> Every change you make here is written straight to GitHub, "+
+    "so it shows up on all your devices. Drop tabulation PDFs above to add tenders."
+  : "<b>Changes stay in this browser.</b> Click <b>Sharing</b> in the sidebar and paste a "+
+    "GitHub token to make your edits reach every device.";
  render();
 })();
 
@@ -423,7 +582,7 @@ function askText(title,label,value,numeric){
   var m=document.getElementById("modal"), i=document.getElementById("mInput");
   document.getElementById("mTitle").textContent=title;
   document.getElementById("mLabel").textContent=label;
-  i.type=numeric?"number":"text";
+  i.type = numeric==="password" ? "password" : (numeric?"number":"text");
   i.value=(value==null?"":String(value));
   m.className="modal on";
   setTimeout(function(){i.focus();i.select();},30);
@@ -454,6 +613,7 @@ async function save(t){
  p.final_qty = (t.final_qty==null?null:t.final_qty);
  p.split = t.split||"";
  if(!savePatch()) throw new Error("the browser refused to store it");
+ await pushData("Update tender "+t.tender_number);
 }
 
 async function editSplit(tn){
@@ -528,7 +688,8 @@ async function deleteTender(){
  T=T.filter(function(x){return x.tender_number!==tn;});
  C=C.filter(function(x){return x.tender_number!==tn;});
  render();
- toast("Tender "+tn+" deleted on this device.");
+ await pushData("Delete tender "+tn);
+ toast(SYNCED ? ("Tender "+tn+" deleted.") : ("Tender "+tn+" deleted on this device."));
 }
 
 function reload(){location.reload();}
@@ -606,6 +767,20 @@ async function upsertParsed(r){
   PATCH.pdfs = PATCH.pdfs || {};
   PATCH.pdfs[tn] = r.pdf_b64;
   fields.pdf_name = r.pdf_name || "";
+  if(SYNCED){
+   // Commit the tabulation too, so Open works on every device, not just this one.
+   var path = "pdfs/"+tn+".pdf", sha = null;
+   try{
+    var head = await fetch(ghUrl(path)+"?ref="+GH.branch,
+                           {headers:ghHeaders(), cache:"no-store"});
+    if(head.ok) sha = (await head.json()).sha;
+   }catch(e){ }
+   try{
+    await ghWrite(path, r.pdf_b64, "Add tabulation for "+tn, sha);
+    fields.pdf_url = path;
+    delete PATCH.pdfs[tn];
+   }catch(e){ r.warnings.push("tabulation PDF not uploaded ("+(e.message||e)+")"); }
+  }
  }
  if(existing){
   Object.assign(patchFor(tn), fields);
@@ -652,6 +827,7 @@ async function importFiles(list){
  var merged = applyPatch(BASE);
  T = merged.tenders; C = merged.consignees;
  render();
+ if(added||updated) await pushData("Import "+(added+updated)+" tabulation(s)");
  var msg = "Imported "+added+" new, refreshed "+updated+".";
  if(errs.length) msg += "\n"+errs.join("\n");
  toast(msg, errs.length?1:0);
@@ -664,7 +840,6 @@ var dz=document.getElementById("drop");
  e.preventDefault(); dz.classList.remove("hot");});});
 dz.addEventListener("drop",function(e){ importFiles(e.dataTransfer.files); });
 dz.addEventListener("click",function(){ document.getElementById("file").click(); });
-document.getElementById("btnPick").onclick=function(){ document.getElementById("file").click(); };
 document.getElementById("file").addEventListener("change",function(e){
  importFiles(e.target.files); e.target.value="";});
 window.addEventListener("dragover",function(e){e.preventDefault();});

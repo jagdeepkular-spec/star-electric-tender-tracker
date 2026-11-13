@@ -25,14 +25,34 @@ server, no build step, no login.
 
 ## How the data works
 
-`data.json` is the shared starting point, loaded by every device.
+`data.json` in this repository **is** the database. Every device reads it
+through the GitHub API on load, so it always sees the newest commit.
 
-Edits you make in the browser (status, agent, final quantity, imports,
-deletions) are kept in that browser's local storage, so they do **not**
-automatically appear on your other devices. To make changes the shared copy:
+### Sharing changes between devices
 
-1. **Export data.json**
-2. Commit the downloaded file over `data.json` in this repository
+Turn on sharing once per device:
+
+1. Create a **fine-grained personal access token**
+   (GitHub → Settings → Developer settings → Personal access tokens →
+   Fine-grained tokens), with **Repository access: only this repository** and
+   **Permissions → Contents: Read and write**. Give it an expiry.
+2. In the tracker, click **Sharing…** in the sidebar and paste the token.
+
+From then on, every edit on that device — status, agent, split clause, final
+quantity, deletions and PDF imports — is committed straight back to
+`data.json`, so it appears on every other device. Imported tabulation PDFs are
+committed to `pdfs/` as well, so **Open** works everywhere, not just on the
+device that imported them.
+
+The token is stored only in that browser's local storage and is sent only to
+github.com. Click **Sharing…** again to turn it off and remove the token.
+
+Without a token the tracker still works and still shows everyone's committed
+data — edits just stay in that browser until you either turn sharing on or use
+**Export data.json** and commit the file by hand.
+
+Two devices editing at once is handled: if someone commits first, the save is
+retried against their version rather than overwriting it.
 
 ## Files
 
