@@ -141,7 +141,7 @@ tbody tr.row.sel{background:#dbe8fd}
    <button onclick="exportCsv()">Export tender CSV</button>
    <button onclick="exportJson()">Export data.json</button>
    <button onclick="reload()">Reload from GitHub</button>
-   <button onclick="connectGitHub()" id="navSync">Sharing&hellip;</button>
+   <button onclick="connectGitHub()" id="navSync">Sign in&hellip;</button>
   </nav>
   <div class="sidefoot" id="syncFoot">Checking sharing&hellip;</div>
  </aside>
@@ -260,7 +260,11 @@ function rows(res){
 }
 
 var STORE_KEY = "star-tender-tracker-v1";
-var TOKEN_KEY = "star-tender-github-token";
+var TOKEN_KEY = "star-tender-github-token";     // pasted personal access token
+var SESSION_KEY = "star-tender-session";        // signed session from the Worker
+var LOGIN_KEY = "star-tender-login";
+var WORKER = "";                                // filled from config.json
+var LOGIN = "";
 var GH = {owner:"jagdeepkular-spec", repo:"star-electric-tender-tracker",
           branch:"main", file:"data.json"};
 var DATA_SHA = null;          // sha of data.json as we last read it
@@ -268,10 +272,30 @@ var SYNCED = false;           // true once a token is present and working
 var PATCH = {tenders:{}, deleted:[], extraTenders:[], consignees:{}, pdfs:{}};
 
 function ghToken(){ try{ return localStorage.getItem(TOKEN_KEY)||""; }catch(e){ return ""; } }
+function ghSession(){ try{ return localStorage.getItem(SESSION_KEY)||""; }catch(e){ return ""; } }
+function canWrite(){ return !!(ghSession() || ghToken()); }
+
+// A sign-in hands the page a signed session in the URL fragment. Take it,
+// stash it, and scrub it off the address bar straight away.
+function takeSessionFromUrl(){
+ var h = location.hash || "";
+ if(h.indexOf("session=")<0 && h.indexOf("error=")<0) return null;
+ var p = new URLSearchParams(h.replace(/^#/,""));
+ var err = p.get("error");
+ history.replaceState(null,"",location.pathname+location.search);
+ if(err) return {error:err};
+ var tok = p.get("session");
+ if(!tok) return null;
+ try{
+  localStorage.setItem(SESSION_KEY, tok);
+  localStorage.setItem(LOGIN_KEY, p.get("login")||"");
+ }catch(e){ return {error:"this browser would not store the sign-in"}; }
+ return {login:p.get("login")||""};
+}
 function ghHeaders(extra){
  var h = {"Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"};
  var t = ghToken();
- if(t) h["Authorization"] = "Bearer "+t;
+ if(t) h["Authorization"] = "Bearer "+t;   // reads only; writes go through ghWrite
  return Object.assign(h, extra||{});
 }
 function ghUrl(path){
@@ -301,10 +325,22 @@ async function ghReadData(){
 }
 
 async function ghWrite(path, contentB64, message, sha){
- var body = {message:message, content:contentB64, branch:GH.branch};
- if(sha) body.sha = sha;
- var res = await fetch(ghUrl(path), {method:"PUT", headers:ghHeaders(
-   {"Content-Type":"application/json"}), body:JSON.stringify(body)});
+ var res;
+ if(ghSession()){
+  res = await fetch(WORKER+"/commit", {method:"POST",
+   headers:{"Content-Type":"application/json","Authorization":"Bearer "+ghSession()},
+   body:JSON.stringify({path:path, content:contentB64, message:message, sha:sha||null})});
+  if(res.status===401){
+   try{ localStorage.removeItem(SESSION_KEY); }catch(e){}
+   SYNCED=false; setSync("off");
+   throw new Error("your sign-in expired - sign in again");
+  }
+ }else{
+  var body = {message:message, content:contentB64, branch:GH.branch};
+  if(sha) body.sha = sha;
+  res = await fetch(ghUrl(path), {method:"PUT", headers:ghHeaders(
+    {"Content-Type":"application/json"}), body:JSON.stringify(body)});
+ }
  if(res.status===409 || res.status===422){
   var e=new Error("conflict"); e.conflict=true; throw e;
  }
@@ -333,12 +369,14 @@ function currentData(){
 var pushQueue = Promise.resolve();
 function pushData(what){
  // Serialised: one commit at a time, so two quick edits cannot race.
+ // Resolves true when the change is safely stored (committed, or local-only
+ // because sharing is off) and false when a commit was attempted and failed.
  pushQueue = pushQueue.then(function(){ return doPush(what); })
-                      .catch(function(){ /* reported in doPush */ });
+                      .catch(function(){ return false; });
  return pushQueue;
 }
 async function doPush(what){
- if(!SYNCED) return;
+ if(!SYNCED) return true;
  setSync("saving");
  for(var attempt=0; attempt<2; attempt++){
   try{
@@ -349,7 +387,7 @@ async function doPush(what){
    savePatch();
    setSync("ok");
    updateFoot();
-   return;
+   return true;
   }catch(e){
    if(e.conflict && attempt===0){
     // Someone else committed first: take their version as the base, then
@@ -364,7 +402,7 @@ async function doPush(what){
    setSync("error");
    toast("Could not save to GitHub: "+(e.message||e)+
          "\nYour change is kept in this browser.",1);
-   return;
+   return false;
   }
  }
 }
@@ -405,14 +443,17 @@ function setBanner(){
   : ("<b>This device can view everything but cannot save changes.</b> "+
      "The list below is the shared, up-to-date register. Turn on sharing to edit from here."))+
   "</span><div class='sp'></div>"+
-  "<button class='btn' onclick='connectGitHub()'>Turn on sharing</button>";
+  "<button class='btn' onclick='connectGitHub()'>"+
+  (WORKER ? "Sign in with GitHub" : "Turn on sharing")+"</button>";
 }
 
 function setSync(state){
  var foot=document.getElementById("syncFoot"), nav=document.getElementById("navSync");
  if(!foot) return;
- if(state==="ok"){ foot.innerHTML="Shared with every device.<br>Saved to GitHub.";
-                   nav.textContent="Sharing: on"; }
+ if(state==="ok"){ foot.innerHTML = LOGIN
+    ? ("Signed in as "+esc(LOGIN)+".<br>Changes are shared.")
+    : "Shared with every device.<br>Saved to GitHub.";
+                   nav.textContent = LOGIN ? ("Signed in: "+LOGIN) : "Sharing: on"; }
  else if(state==="saving"){ foot.innerHTML="Saving to GitHub&hellip;"; }
  else if(state==="error"){ foot.innerHTML="Last save to GitHub failed.<br>Change kept locally.";
                            nav.textContent="Sharing: check";
@@ -429,7 +470,20 @@ function setSync(state){
  updateFoot();
 }
 
+function signInWithGitHub(){
+ location.href = WORKER + "/login?redirect=" +
+   encodeURIComponent(location.origin + location.pathname);
+}
+
 async function connectGitHub(){
+ if(!SYNCED && WORKER){ signInWithGitHub(); return; }
+ if(SYNCED && ghSession()){
+  var out = await askConfirm("Signed in as "+(LOGIN||"GitHub"),
+    "Changes from this device are saved for everyone. Sign out on this device?","Sign out");
+  if(out){ try{ localStorage.removeItem(SESSION_KEY); localStorage.removeItem(LOGIN_KEY); }catch(e){}
+           SYNCED=false; LOGIN=""; setSync("off"); toast("Signed out on this device."); }
+  return;
+ }
  if(SYNCED){
   var off=await askConfirm("Sharing is on",
    "Changes on this device are saved to GitHub and reach every device. "+
@@ -499,8 +553,17 @@ var BASE = {tenders:[], consignees:[]};
 (async function(){
  loadPatch();
  try{
+  var cfg = await (await fetch("config.json?t="+Date.now(),{cache:"no-store"})).json();
+  WORKER = (cfg.worker_url||"").replace(/\/$/,"");
+ }catch(e){ WORKER = ""; }
+
+ var landed = takeSessionFromUrl();
+ if(landed && landed.error) toast("Sign-in failed: "+landed.error, 1);
+ try{ LOGIN = localStorage.getItem(LOGIN_KEY)||""; }catch(e){ LOGIN=""; }
+
+ try{
   BASE = await ghReadData();
-  SYNCED = !!ghToken();
+  SYNCED = canWrite();
  }catch(e){
   // No API (rate limit, offline): fall back to the committed copy, read-only sharing.
   try{
@@ -513,6 +576,10 @@ var BASE = {tenders:[], consignees:[]};
  T = merged.tenders; C = merged.consignees;
  READY = true;
  setSync(SYNCED ? "ok" : "off");
+ if(landed && landed.login && SYNCED){
+  toast("Signed in as "+landed.login+". Changes from this device are shared.");
+  pushData("Sign in from browser");
+ }
  setBanner();
  render();
 })();
@@ -666,7 +733,7 @@ async function save(t){
  p.split = t.split||"";
  if(!savePatch()) throw new Error("the browser refused to store it");
  setBanner(); updateFoot();
- await pushData("Update tender "+t.tender_number);
+ return await pushData("Update tender "+t.tender_number);
 }
 
 async function editSplit(tn){
@@ -682,7 +749,7 @@ async function editSplit(tn){
  }
  var before=t.split||"";
  t.split=v; render();
- try{ await save(t); toast(v?("Split set to "+v+"."):"Split clause cleared."); }
+ try{ if(await save(t)) toast(v?("Split set to "+v+"."):"Split clause cleared."); }
  catch(e){ t.split=before; render(); toast("Could not save the split: "+e.message,1); }
 }
 
@@ -696,7 +763,7 @@ async function editFinalQty(tn){
  var before=t.final_qty;
  t.final_qty = (String(v).trim()==="" ? null : Number(v));
  render();
- try{ await save(t); toast("Final quantity updated."); }
+ try{ if(await save(t)) toast("Final quantity updated."); }
  catch(e){ t.final_qty=before; render(); toast("Could not save: "+e.message,1); }
 }
 
@@ -707,7 +774,7 @@ async function assignAgent(tn){
  if(v===null)return;
  var before=t.agent;
  t.agent=v.trim(); render();
- try{ await save(t); toast(t.agent?("Agent set to "+t.agent+"."):"Agent cleared."); }
+ try{ if(await save(t)) toast(t.agent?("Agent set to "+t.agent+"."):"Agent cleared."); }
  catch(e){ t.agent=before; render(); toast("Could not save the agent: "+e.message,1); }}
 async function setStatus(st){var t=cur();if(!t)return;
  if(st==="Order Received"){
@@ -718,7 +785,7 @@ async function setStatus(st){var t=cur();if(!t)return;
  } else t.final_qty=null;
  var bs=t.status, bq=t.final_qty;
  t.status=st; render();
- try{ await save(t); toast(t.tender_number+" marked "+st+"."); }
+ try{ if(await save(t)) toast(t.tender_number+" marked "+st+"."); }
  catch(e){ t.status=bs; t.final_qty=bq; render();
            toast("Could not save the status: "+e.message,1); }}
 async function deleteTender(){

@@ -1,0 +1,17 @@
+name = "star-tender-auth"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+[vars]
+# GitHub accounts allowed to edit the register. Everyone else is refused.
+ALLOWED_LOGINS = "jagdeepkular-spec"
+# The tracker's own address; sign-ins are never sent anywhere else.
+ALLOWED_ORIGIN = "https://jagdeepkular-spec.github.io"
+REPO_OWNER = "jagdeepkular-spec"
+REPO_NAME = "star-electric-tender-tracker"
+REPO_BRANCH = "main"
+
+# Secrets are NOT set here. Run these once after deploying:
+#   wrangler secret put GITHUB_CLIENT_ID
+#   wrangler secret put GITHUB_CLIENT_SECRET
+#   wrangler secret put SESSION_SECRET
