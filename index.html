@@ -375,7 +375,7 @@ function updateFoot(){
  var n=pendingCount();
  el.textContent = T.length+" tenders • "+
   (SYNCED ? "shared via GitHub"
-          : (n ? (n+" change"+(n>1?"s":"")+" not shared yet") : "nothing changed here yet"));
+          : (n ? (n+" change"+(n>1?"s":"")+" not shared yet") : "view only on this device"));
 }
 function pendingCount(){
  var n = Object.keys(PATCH.tenders||{}).length
@@ -396,11 +396,15 @@ function setBanner(){
  el.style.display = "";
  var n = pendingCount();
  el.className = "note warn";
- el.innerHTML = "<span><b>Sharing is off \u2014 changes stay in this browser only.</b> "+
-  (n ? ("You have <b>"+n+" change"+(n>1?"s":"")+"</b> saved here that no other device can see. ")
-     : "Other devices will not see what you change here. ")+
-  "Turn on sharing to push them to GitHub.</span>"+
-  "<div class='sp'></div>"+
+ // A device without a token still READS everything - only saving is blocked.
+ // Say which of the two it is, or a fresh phone looks like it is out of date.
+ el.innerHTML = "<span>" + (n
+  ? ("<b>"+n+" change"+(n>1?"s":"")+" on this device "+(n>1?"are":"is")+" not shared.</b> "+
+     "The list below is up to date, but "+(n>1?"these edits":"this edit")+" cannot reach "+
+     "your other devices until you turn on sharing here.")
+  : ("<b>This device can view everything but cannot save changes.</b> "+
+     "The list below is the shared, up-to-date register. Turn on sharing to edit from here."))+
+  "</span><div class='sp'></div>"+
   "<button class='btn' onclick='connectGitHub()'>Turn on sharing</button>";
 }
 
@@ -419,7 +423,7 @@ function setSync(state){
                              "to retry.</span><div class='sp'></div>"+
                              "<button class='btn' onclick='connectGitHub()'>Sharing</button>"; }
                            return; }
- else { foot.innerHTML="Changes stay in this browser.<br>Turn on sharing to sync.";
+ else { foot.innerHTML="Viewing the shared register.<br>Saving is off on this device.";
         nav.textContent="Sharing: off"; }
  setBanner();
  updateFoot();
@@ -436,7 +440,8 @@ async function connectGitHub(){
  }
  var v=await askText("Turn on sharing",
   "Paste a GitHub token with Contents read and write on this repository. "+
-  "It is stored only in this browser and sent only to github.com.",
+  "Each device needs this once - the same token works on all of them. It is "+
+  "stored only in this browser and sent only to github.com.",
   "", "password");
  if(v===null) return;
  v=String(v).trim();
