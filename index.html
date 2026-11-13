@@ -37,7 +37,7 @@ button.btn:hover{border-color:var(--steco);color:var(--steco-dk)}
 button.btn.green{background:var(--green);border-color:var(--green);color:#fff;font-weight:600}
 button.btn.red{background:var(--red);border-color:var(--red);color:#fff;font-weight:600}
 button.btn:disabled{opacity:.42;cursor:not-allowed}
-.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px}
+.cards{display:grid;grid-template-columns:repeat(6,1fr);gap:13px;margin-bottom:16px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:7px;padding:15px 18px}
 .card .k{font-size:10.5px;letter-spacing:.1em;color:var(--mute)}
 .card .v{font-size:31px;font-weight:650;margin-top:7px;line-height:1}
@@ -70,13 +70,17 @@ tbody tr.row.sel{background:#dbe8fd}
 .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .tn{font-weight:600;color:var(--steco-dk);white-space:nowrap}
 .tn .tw{color:var(--mute);font-weight:400}
-.prod{max-width:430px;color:#33415c}
+.prod{max-width:260px;color:#33415c}
 .rank{font-weight:650}
 .rank.L1{color:var(--green)}.rank.L2{color:#9a6700}.rank.L3{color:#b54708}
 .rank.L4,.rank.L5,.rank.L6,.rank.L7,.rank.L8{color:var(--red)}
 .st{white-space:nowrap}.st.won{color:var(--green);font-weight:600}
 .st.lost{color:var(--red);font-weight:600}
-.agent.none{color:var(--mute)}.dash{color:#aab4c6}
+.agent.none{color:var(--mute)}
+.split{cursor:pointer;white-space:nowrap}
+.split:hover,.fq:hover,.agent:hover{background:#eef3fc}
+.fq{cursor:pointer}
+.muted2{color:var(--mute);font-weight:400;font-size:11px}.dash{color:#aab4c6}
 .subrow td{background:#f7f9fd;padding:0 10px 12px 26px}
 .subrow table{width:auto;min-width:60%}
 .subrow th{position:static;background:transparent;border-bottom:1px solid var(--line);
@@ -105,7 +109,8 @@ tbody tr.row.sel{background:#dbe8fd}
  max-width:420px;z-index:60;white-space:pre-line}
 #toast.show{opacity:1;transform:none}
 #toast.err{border-left-color:var(--red)}
-@media(max-width:1100px){.cards{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:1500px){.cards{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:900px){.cards{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:780px){.shell{flex-direction:column}.sidebar{width:100%;flex:none}
  .prod{max-width:200px}}
 </style></head><body>
@@ -197,6 +202,35 @@ function days(d){if(!d)return null;var t=Date.parse(d+"T00:00:00");
 function toast(m,bad){var e=document.getElementById("toast");e.textContent=m;
  e.className="show"+(bad?" err":"");clearTimeout(e._t);
  e._t=setTimeout(function(){e.className="";},3600);}
+
+// A split clause divides the order between the lowest bidders, e.g. "60:40"
+// gives L1 60% and L2 40%. With no clause, L1 is expected to take it all.
+function splitParts(sp){
+ if(!sp) return null;
+ var parts = String(sp).split(/[:/\s,]+/).map(Number).filter(function(n){return n>0;});
+ return parts.length>1 ? parts : null;
+}
+function rankIndex(r){
+ var m=/^L(\d+)$/.exec(String(r||"").trim());
+ return m ? parseInt(m[1],10) : 0;     // 0 = unknown rank
+}
+function expectedQty(t){
+ var k = rankIndex(t.rank);
+ if(!k) return null;
+ var parts = splitParts(t.split);
+ if(!parts) return k===1 ? (t.qty||0) : 0;
+ var total = parts.reduce(function(a,b){return a+b;},0);
+ if(k>parts.length || !total) return 0;
+ return Math.round((t.qty||0) * parts[k-1] / total);
+}
+function tenderValue(t){
+ var r = rate(t.tender_number);
+ return r ? (t.qty||0)*r : null;
+}
+function expectedValue(t){
+ var r = rate(t.tender_number), q = expectedQty(t);
+ return (r && q!=null) ? q*r : null;
+}
 
 function kids(tn){return C.filter(function(c){return c.tender_number===tn;})
  .sort(function(a,b){return (b.qty||0)-(a.qty||0);});}
@@ -294,17 +328,28 @@ function render(){
  var open=T.filter(function(t){return t.status==="Financial Bid Opened";}).length;
  var won=T.filter(function(t){return t.status==="Order Received";}).length;
  var lost=T.filter(function(t){return t.status==="Order Not Received";}).length;
+ var expV=0, tendV=0;
+ T.forEach(function(t){
+  if(t.status==="Order Not Received") return;
+  var ev=expectedValue(t), tv=tenderValue(t);
+  if(ev) expV+=ev; if(tv) tendV+=tv;
+ });
  document.getElementById("cards").innerHTML=
   card("TOTAL TENDERS",T.length)+card("FINANCIAL BID OPENED",open)+
-  card("ORDERS RECEIVED",won)+card("ORDERS NOT RECEIVED",lost);
+  card("ORDERS RECEIVED",won)+card("ORDERS NOT RECEIVED",lost)+
+  cardText("TENDER VALUE (LIVE)",money(tendV))+
+  cardText("EXPECTED VALUE",money(expV));
  if(!rows.length){document.getElementById("tablebox").innerHTML=
   '<div class="empty">No tenders match this search.</div>';}
  else{
   var h='<table><thead><tr><th>TENDER NO.</th><th>RAILWAY</th><th>PRODUCT</th>'+
-   '<th class="num">QTY</th><th>RANK</th><th class="num">DAYS SINCE TAB.</th>'+
-   '<th>AGENT</th><th>STATUS</th><th class="num">FINAL QTY</th><th>PDF</th></tr></thead><tbody>';
+   '<th class="num">TENDER QTY</th><th>RANK</th><th>SPLIT</th>'+
+   '<th class="num">EXPECTED QTY</th><th class="num">TENDER VALUE</th>'+
+   '<th class="num">DAYS SINCE TAB.</th><th>AGENT</th><th>STATUS</th>'+
+   '<th class="num">FINAL QTY RECEIVED</th><th>PDF</th></tr></thead><tbody>';
   rows.forEach(function(t){
    var tn=t.tender_number,d=days(t.tab_date),n=kids(tn).length;
+   var eq=expectedQty(t), tv=tenderValue(t), ev=expectedValue(t);
    var stc=t.status==="Order Received"?"won":(t.status==="Order Not Received"?"lost":"");
    h+='<tr class="row'+(SEL===tn?" sel":"")+'" onclick="pick(\''+esc(tn)+'\')">'+
     '<td class="tn" onclick="event.stopPropagation();toggle(\''+esc(tn)+'\')">'+
@@ -312,12 +357,20 @@ function render(){
     '<td>'+esc(t.railway)+'</td><td class="prod">'+esc(t.product)+'</td>'+
     '<td class="num">'+nf(t.qty)+'</td>'+
     '<td class="rank '+esc(t.rank)+'">'+esc(t.rank)+'</td>'+
+    '<td class="split" title="Click to set the split clause"'+
+      ' onclick="event.stopPropagation();editSplit(\''+esc(tn)+'\')">'+
+      (t.split?esc(t.split):'<span class="dash">\u2014</span>')+'</td>'+
+    '<td class="num">'+(eq==null?'<span class="dash">\u2014</span>':nf(eq))+
+      (ev!=null?' <span class="muted2">'+money(ev)+'</span>':'')+'</td>'+
+    '<td class="num">'+(tv==null?'<span class="dash">\u2014</span>':money(tv))+'</td>'+
     '<td class="num">'+(d==null?'<span class="dash">—</span>':d)+'</td>'+
     '<td class="agent'+(t.agent?"":" none")+'" title="Click to assign an agent"'+
      ' onclick="event.stopPropagation();assignAgent(\''+esc(tn)+'\')">'+
      esc(t.agent||"Unassigned")+'</td>'+
     '<td class="st '+stc+'">'+esc(t.status)+'</td>'+
-    '<td class="num">'+(t.final_qty==null?'<span class="dash">—</span>':nf(t.final_qty))+'</td>'+
+    '<td class="num fq" title="Click to set the final quantity received"'+
+      ' onclick="event.stopPropagation();editFinalQty(\''+esc(tn)+'\')">'+
+      (t.final_qty==null?'<span class="dash">—</span>':nf(t.final_qty))+'</td>'+
     '<td>'+((t.pdf_url||t.has_pdf)
       ? '<a href="#" onclick="event.preventDefault();event.stopPropagation();viewPdf(\''+esc(tn)+'\')">Open</a>'
       : '<span class="dash" title="Drop this tabulation PDF above to attach it">—</span>')+'</td></tr>';
@@ -331,10 +384,11 @@ function render(){
  document.getElementById("foot").textContent=T.length+" tenders • shared web copy";
 }
 function card(k,v){return '<div class="card"><div class="k">'+k+'</div><div class="v">'+nf(v)+'</div></div>';}
+function cardText(k,v){return '<div class="card"><div class="k">'+k+'</div><div class="v" style="font-size:24px">'+esc(v||"\u2014")+'</div></div>';}
 function sub(t){
  var ks=kids(t.tender_number);
- if(!ks.length)return '<tr class="subrow"><td colspan="10"><div style="padding:10px 0;color:#6b7a94">No consignee lines.</div></td></tr>';
- var h='<tr class="subrow"><td colspan="10"><table><thead><tr><th>CONSIGNEE</th>'+
+ if(!ks.length)return '<tr class="subrow"><td colspan="13"><div style="padding:10px 0;color:#6b7a94">No consignee lines.</div></td></tr>';
+ var h='<tr class="subrow"><td colspan="13"><table><thead><tr><th>CONSIGNEE</th>'+
   '<th class="num">QTY</th><th>OUR RANK</th><th class="num">OUR RATE</th>'+
   '<th class="num">LINE VALUE</th></tr></thead><tbody>';
  ks.forEach(function(c){
@@ -398,7 +452,39 @@ async function save(t){
  var p = patchFor(t.tender_number);
  p.agent = t.agent||""; p.status = t.status;
  p.final_qty = (t.final_qty==null?null:t.final_qty);
+ p.split = t.split||"";
  if(!savePatch()) throw new Error("the browser refused to store it");
+}
+
+async function editSplit(tn){
+ var t=T.filter(function(x){return x.tender_number===tn;})[0]; if(!t) return;
+ var v=await askText("Split clause","Share between the lowest bidders for "+tn+
+   " \u2014 e.g. 60:40, 70:30 or 50:30:20. Leave blank for no split.",
+   t.split||"", false);
+ if(v===null) return;
+ v=String(v).trim();
+ if(v && !splitParts(v)){
+  toast("That is not a split clause. Use numbers separated by colons, like 60:40.",1);
+  return;
+ }
+ var before=t.split||"";
+ t.split=v; render();
+ try{ await save(t); toast(v?("Split set to "+v+"."):"Split clause cleared."); }
+ catch(e){ t.split=before; render(); toast("Could not save the split: "+e.message,1); }
+}
+
+async function editFinalQty(tn){
+ var t=T.filter(function(x){return x.tender_number===tn;})[0]; if(!t) return;
+ var v=await askText("Final quantity received",
+   "Quantity actually ordered for "+tn+" (tender qty "+nf(t.qty)+
+   (expectedQty(t)!=null?", expected "+nf(expectedQty(t)):"")+"). Leave blank to clear.",
+   t.final_qty==null?"":t.final_qty, true);
+ if(v===null) return;
+ var before=t.final_qty;
+ t.final_qty = (String(v).trim()==="" ? null : Number(v));
+ render();
+ try{ await save(t); toast("Final quantity updated."); }
+ catch(e){ t.final_qty=before; render(); toast("Could not save: "+e.message,1); }
 }
 
 async function assignAgent(tn){
@@ -453,7 +539,7 @@ function exportJson(){
             tenders:T.map(function(t){
               return {tender_number:t.tender_number, railway:t.railway, product:t.product,
                       item_code:t.item_code, qty:t.qty, rank:t.rank, tab_date:t.tab_date,
-                      agent:t.agent||"", status:t.status,
+                      agent:t.agent||"", status:t.status, split:t.split||"",
                       final_qty:(t.final_qty==null?null:t.final_qty),
                       pdf_url:t.pdf_url||"", pdf_name:t.pdf_name||""};
             }),
@@ -468,10 +554,13 @@ function exportJson(){
 }
 function exportCsv(){
  var rows=[["Tender No","Railway","Product","Item Code","Qty","Rank","Tab Date","Status",
-  "Final Qty","Agent","Consignee","Consignee Qty","Consignee Rank","Consignee Rate"]];
+  "Split Clause","Expected Qty","Tender Value","Expected Value","Final Qty Received",
+  "Agent","Consignee","Consignee Qty","Consignee Rank","Consignee Rate"]];
  T.forEach(function(t){
   var base=[t.tender_number,t.railway,t.product,t.item_code,t.qty,t.rank,t.tab_date,
-   t.status,t.final_qty==null?"":t.final_qty,t.agent];
+   t.status,t.split||"",expectedQty(t)==null?"":expectedQty(t),
+   tenderValue(t)==null?"":tenderValue(t),expectedValue(t)==null?"":expectedValue(t),
+   t.final_qty==null?"":t.final_qty,t.agent];
   var ks=kids(t.tender_number);
   if(ks.length)ks.forEach(function(c){rows.push(base.concat(
    [c.name,c.qty,c.star_rank,c.star_rate==null?"":c.star_rate]));});

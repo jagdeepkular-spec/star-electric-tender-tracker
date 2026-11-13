@@ -7,8 +7,14 @@ server, no build step, no login.
 
 ## What it does
 
-- Register of railway tenders with railway, product, item code, quantity, our
-  rank, days since tabulation, agent, status and final quantity
+- Register of railway tenders with railway, product, item code, tender quantity,
+  our rank, split clause, expected quantity, tender value, days since tabulation,
+  agent, status and final quantity received
+- **Split clause** — set a clause like `60:40`, `70:30` or `50:30:20` on any
+  tender. **Expected quantity** is then our rank's share of the tender quantity;
+  with no clause, L1 is expected to take the whole order and anyone below it
+  nothing. **Tender value** is the tender quantity at our rate, and the figure
+  beside the expected quantity is that share's value
 - Click a tender number to expand its consignees, with our rate and line value
   per consignee
 - **Open** shows that tender's financial tabulation PDF
