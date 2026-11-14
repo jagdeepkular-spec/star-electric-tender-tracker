@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
 <title>Star Electric - Tender Tracker</title>
 <style>
 *{box-sizing:border-box}
@@ -264,6 +265,7 @@ var TOKEN_KEY = "star-tender-github-token";     // pasted personal access token
 var SESSION_KEY = "star-tender-session";        // signed session from the Worker
 var LOGIN_KEY = "star-tender-login";
 var WORKER = "";                                // filled from config.json
+var APP_VERSION = "20261114-0254";             // build stamp, checked against config.json
 var LOGIN = "";
 var GH = {owner:"jagdeepkular-spec", repo:"star-electric-tender-tracker",
           branch:"main", file:"data.json"};
@@ -632,6 +634,16 @@ var BASE = {tenders:[], consignees:[]};
  try{
   var cfg = await (await fetch("config.json?t="+Date.now(),{cache:"no-store"})).json();
   WORKER = (cfg.worker_url||"").replace(/\/$/,"");
+  // Phones and tablets hold on to the page for a long time, so a device can
+  // sit on a months-old copy without anyone noticing. config.json is never
+  // cached, so it is the one thing that can tell us this page is stale. If
+  // it names a newer build, fetch the page again under a fresh address. The
+  // r= guard means this can happen at most once per load.
+  if(cfg.app_version && cfg.app_version !== APP_VERSION &&
+     location.search.indexOf("r=")<0){
+   location.replace(location.pathname + "?r=" + encodeURIComponent(cfg.app_version));
+   return;
+  }
  }catch(e){ WORKER = ""; }
 
  var landed = takeSessionFromUrl();
