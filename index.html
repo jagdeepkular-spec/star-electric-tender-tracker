@@ -262,7 +262,7 @@ function rows(res){
 
 var STORE_KEY = "star-tender-tracker-v1";
 var WORKER = "";                            // filled from config.json
-var APP_VERSION = "20261114-0309";         // build stamp, checked against config.json
+var APP_VERSION = "20261114-0320";         // build stamp, checked against config.json
 var LOGIN = "";
 var GH = {owner:"jagdeepkular-spec", repo:"star-electric-tender-tracker",
           branch:"main", file:"data.json"};
@@ -314,9 +314,22 @@ async function storeRead(){
 async function ghReadData(){
  var d = await storeRead();
  if(d) return d;
- // First run against empty storage: seed it from the copy still in the repo.
+ // First run against empty storage: move the register, and the tabulations
+ // it points at, out of the repository and into private storage. This runs
+ // once; afterwards the repository copies can go.
  var seed = await (await fetch("data.json?t="+Date.now(),{cache:"no-store"})).json();
  await storePut("/data", seed);
+ var pdfs = (seed.tenders||[]).filter(function(t){ return t.pdf_url; });
+ for(var i=0;i<pdfs.length;i++){
+  var name = String(pdfs[i].pdf_url).replace(/^pdfs\//,"").replace(/[^A-Za-z0-9._-]/g,"_");
+  try{
+   var r = await fetch(pdfs[i].pdf_url+"?t="+Date.now(), {cache:"no-store"});
+   if(!r.ok) continue;
+   var buf = new Uint8Array(await r.arrayBuffer()), bs="", CH=0x8000;
+   for(var j=0;j<buf.length;j+=CH) bs+=String.fromCharCode.apply(null,buf.subarray(j,j+CH));
+   await storePut("/pdf/"+name, {content:btoa(bs)});
+  }catch(e){ /* a tabulation that will not move is not worth blocking on */ }
+ }
  return seed;
 }
 
