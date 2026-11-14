@@ -622,7 +622,7 @@ function render(){
  else{
   var h='<table><thead><tr><th>TENDER NO.</th><th>RAILWAY</th><th>PRODUCT</th>'+
    '<th class="num">TENDER QTY</th><th>RANK</th>'+
-   '<th class="num">FINAL QTY RECEIVED</th><th class="num">TENDER VALUE</th>'+
+   '<th class="num">FINAL QTY</th><th class="num">TENDER VALUE</th>'+
    '<th class="num">DAYS SINCE TAB.</th><th>AGENT</th><th>STATUS</th>'+
    '<th>PDF</th></tr></thead><tbody>';
   rows.forEach(function(t){
@@ -831,7 +831,7 @@ function exportJson(){
 }
 function exportCsv(){
  var rows=[["Tender No","Railway","Product","Item Code","Qty","Rank","Tab Date","Status",
-  "Split Clause","Expected Qty","Tender Value","Expected Value","Final Qty Received",
+  "Split Clause","Expected Qty","Tender Value","Expected Value","Final Qty",
   "Agent","Consignee","Consignee Qty","Consignee Rank","Consignee Rate"]];
  T.forEach(function(t){
   var base=[t.tender_number,t.railway,t.product,t.item_code,t.qty,t.rank,t.tab_date,
