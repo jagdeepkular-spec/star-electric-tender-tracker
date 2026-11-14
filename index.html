@@ -621,13 +621,13 @@ function render(){
   '<div class="empty">No tenders match this search.</div>';}
  else{
   var h='<table><thead><tr><th>TENDER NO.</th><th>RAILWAY</th><th>PRODUCT</th>'+
-   '<th class="num">TENDER QTY</th><th>RANK</th><th>SPLIT</th>'+
-   '<th class="num">EXPECTED QTY</th><th class="num">TENDER VALUE</th>'+
+   '<th class="num">TENDER QTY</th><th>RANK</th>'+
+   '<th class="num">FINAL QTY RECEIVED</th><th class="num">TENDER VALUE</th>'+
    '<th class="num">DAYS SINCE TAB.</th><th>AGENT</th><th>STATUS</th>'+
-   '<th class="num">FINAL QTY RECEIVED</th><th>PDF</th></tr></thead><tbody>';
+   '<th>PDF</th></tr></thead><tbody>';
   rows.forEach(function(t){
    var tn=t.tender_number,d=days(t.tab_date),n=kids(tn).length;
-   var eq=expectedQty(t), tv=tenderValue(t), ev=expectedValue(t);
+   var tv=tenderValue(t);
    var stc=t.status==="Order Received"?"won":(t.status==="Order Not Received"?"lost":"");
    h+='<tr class="row'+(SEL===tn?" sel":"")+'" onclick="pick(\''+esc(tn)+'\')">'+
     '<td class="tn" onclick="event.stopPropagation();toggle(\''+esc(tn)+'\')">'+
@@ -635,20 +635,15 @@ function render(){
     '<td>'+esc(t.railway)+'</td><td class="prod">'+esc(t.product)+'</td>'+
     '<td class="num">'+nf(t.qty)+'</td>'+
     '<td class="rank '+esc(t.rank)+'">'+esc(t.rank)+'</td>'+
-    '<td class="split" title="Click to set the split clause"'+
-      ' onclick="event.stopPropagation();editSplit(\''+esc(tn)+'\')">'+
-      (t.split?esc(t.split):'<span class="dash">\u2014</span>')+'</td>'+
-    '<td class="num">'+(eq==null?'<span class="dash">\u2014</span>':nf(eq))+
-      (ev!=null?' <span class="muted2">'+money(ev)+'</span>':'')+'</td>'+
+    '<td class="num fq" title="Click to set the final quantity received"'+
+      ' onclick="event.stopPropagation();editFinalQty(\''+esc(tn)+'\')">'+
+      (t.final_qty==null?'<span class="dash">—</span>':nf(t.final_qty))+'</td>'+
     '<td class="num">'+(tv==null?'<span class="dash">\u2014</span>':money(tv))+'</td>'+
     '<td class="num">'+(d==null?'<span class="dash">—</span>':d)+'</td>'+
     '<td class="agent'+(t.agent?"":" none")+'" title="Click to assign an agent"'+
      ' onclick="event.stopPropagation();assignAgent(\''+esc(tn)+'\')">'+
      esc(t.agent||"Unassigned")+'</td>'+
     '<td class="st '+stc+'">'+esc(t.status)+'</td>'+
-    '<td class="num fq" title="Click to set the final quantity received"'+
-      ' onclick="event.stopPropagation();editFinalQty(\''+esc(tn)+'\')">'+
-      (t.final_qty==null?'<span class="dash">—</span>':nf(t.final_qty))+'</td>'+
     '<td>'+((t.pdf_url||t.has_pdf)
       ? '<a href="#" onclick="event.preventDefault();event.stopPropagation();viewPdf(\''+esc(tn)+'\')">Open</a>'
       : '<span class="dash" title="Drop this tabulation PDF above to attach it">—</span>')+'</td></tr>';
@@ -665,8 +660,8 @@ function card(k,v){return '<div class="card"><div class="k">'+k+'</div><div clas
 function cardText(k,v){return '<div class="card"><div class="k">'+k+'</div><div class="v" style="font-size:24px">'+esc(v||"\u2014")+'</div></div>';}
 function sub(t){
  var ks=kids(t.tender_number);
- if(!ks.length)return '<tr class="subrow"><td colspan="13"><div style="padding:10px 0;color:#6b7a94">No consignee lines.</div></td></tr>';
- var h='<tr class="subrow"><td colspan="13"><table><thead><tr><th>CONSIGNEE</th>'+
+ if(!ks.length)return '<tr class="subrow"><td colspan="12"><div style="padding:10px 0;color:#6b7a94">No consignee lines.</div></td></tr>';
+ var h='<tr class="subrow"><td colspan="12"><table><thead><tr><th>CONSIGNEE</th>'+
   '<th class="num">QTY</th><th>OUR RANK</th><th class="num">OUR RATE</th>'+
   '<th class="num">LINE VALUE</th></tr></thead><tbody>';
  ks.forEach(function(c){
@@ -757,7 +752,7 @@ async function editFinalQty(tn){
  var t=T.filter(function(x){return x.tender_number===tn;})[0]; if(!t) return;
  var v=await askText("Final quantity received",
    "Quantity actually ordered for "+tn+" (tender qty "+nf(t.qty)+
-   (expectedQty(t)!=null?", expected "+nf(expectedQty(t)):"")+"). Leave blank to clear.",
+   "). Leave blank to clear.",
    t.final_qty==null?"":t.final_qty, true);
  if(v===null) return;
  var before=t.final_qty;
