@@ -262,7 +262,7 @@ function rows(res){
 
 var STORE_KEY = "star-tender-tracker-v1";
 var WORKER = "";                            // filled from config.json
-var APP_VERSION = "20261114-0320";         // build stamp, checked against config.json
+var APP_VERSION = "20261114-0323";         // build stamp, checked against config.json
 var LOGIN = "";
 var GH = {owner:"jagdeepkular-spec", repo:"star-electric-tender-tracker",
           branch:"main", file:"data.json"};
@@ -317,7 +317,9 @@ async function ghReadData(){
  // First run against empty storage: move the register, and the tabulations
  // it points at, out of the repository and into private storage. This runs
  // once; afterwards the repository copies can go.
- var seed = await (await fetch("data.json?t="+Date.now(),{cache:"no-store"})).json();
+ var res = await fetch("data.json?t="+Date.now(),{cache:"no-store"});
+ if(!res.ok) throw new Error("the register is empty and there is nothing left to seed it from");
+ var seed = await res.json();
  await storePut("/data", seed);
  var pdfs = (seed.tenders||[]).filter(function(t){ return t.pdf_url; });
  for(var i=0;i<pdfs.length;i++){
