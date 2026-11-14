@@ -14,7 +14,10 @@
  * holds is useless anywhere else: it only commits to the one repository below.
  *
  * Required secrets (wrangler secret put NAME):
- *   GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, SESSION_SECRET
+ *   GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
+ *   SESSION_SECRET is optional: when it is not set, the session signing key
+ *   is derived from GITHUB_CLIENT_SECRET, so only one secret has to be
+ *   stored in Cloudflare.
  * Required vars (wrangler.toml):
  *   ALLOWED_LOGINS, ALLOWED_ORIGIN, REPO_OWNER, REPO_NAME, REPO_BRANCH
  */
@@ -58,6 +61,14 @@ function b64urlToBytes(str) {
 async function hmacKey(secret) {
   return crypto.subtle.importKey("raw", enc.encode(secret),
     { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
+}
+
+// The sessions this Worker hands out are signed with their own key. If no
+// SESSION_SECRET is configured, derive one from the OAuth client secret so
+// that only a single secret has to be kept in Cloudflare. The prefix keeps
+// the derived key distinct from the client secret itself.
+function sessionSecret(env) {
+  return env.SESSION_SECRET || ("star-tender-session|" + (env.GITHUB_CLIENT_SECRET || ""));
 }
 
 async function signSession(payload, secret) {
@@ -166,7 +177,7 @@ async function handleCallback(url, env) {
     login: user.login,
     gh: tok.access_token,
     exp: Date.now() + SESSION_DAYS * 86400000,
-  }, env.SESSION_SECRET);
+  }, sessionSecret(env));
   return finish(back, "#session=" + encodeURIComponent(session) +
                       "&login=" + encodeURIComponent(user.login));
 }
@@ -174,7 +185,7 @@ async function handleCallback(url, env) {
 async function sessionFrom(request, env) {
   const auth = request.headers.get("Authorization") || "";
   if (auth.indexOf("Bearer ") !== 0) return null;
-  return await readSession(auth.slice(7), env.SESSION_SECRET);
+  return await readSession(auth.slice(7), sessionSecret(env));
 }
 
 async function handleCommit(request, env) {
