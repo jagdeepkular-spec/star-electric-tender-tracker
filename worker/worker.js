@@ -231,6 +231,71 @@ async function handleCommit(request, env) {
   return json(env, { ok: true, commit: out.commit && out.commit.sha, content: out.content });
 }
 
+/* --------------------------------------------------------- the device flow
+ * GitHub's device flow lets a browser sign in with nothing but the public
+ * client id - no client secret anywhere. The browser cannot call GitHub's
+ * device endpoints directly (they send no CORS headers), so this Worker
+ * passes the two calls through. It holds no secret of its own.
+ */
+async function handleDeviceStart(env) {
+  const res = await fetch("https://github.com/login/device/code", {
+    method: "POST",
+    headers: { "Accept": "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ client_id: cfg(env, "GITHUB_CLIENT_ID"), scope: "public_repo" }),
+  });
+  const d = await res.json();
+  if (d.error) return json(env, { error: d.error_description || d.error }, 400);
+  return json(env, {
+    device_code: d.device_code,
+    user_code: d.user_code,
+    verification_uri: d.verification_uri,
+    interval: d.interval || 5,
+    expires_in: d.expires_in || 900,
+  });
+}
+
+async function handleDevicePoll(request, env) {
+  let body;
+  try { body = await request.json(); }
+  catch (e) { return json(env, { error: "Bad request body" }, 400); }
+  if (!body.device_code) return json(env, { error: "No device code" }, 400);
+
+  const res = await fetch("https://github.com/login/oauth/access_token", {
+    method: "POST",
+    headers: { "Accept": "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({
+      client_id: cfg(env, "GITHUB_CLIENT_ID"),
+      device_code: body.device_code,
+      grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+    }),
+  });
+  const d = await res.json();
+
+  // Still waiting on the person to type the code - not an error.
+  if (d.error === "authorization_pending") return json(env, { pending: true });
+  if (d.error === "slow_down") return json(env, { pending: true, interval: d.interval || 10 });
+  if (d.error) return json(env, { error: d.error_description || d.error }, 400);
+  if (!d.access_token) return json(env, { error: "GitHub sent no token" }, 400);
+
+  // Check the account before handing the token back to the page.
+  const who = await fetch("https://api.github.com/user", {
+    headers: {
+      "Authorization": "Bearer " + d.access_token,
+      "Accept": "application/vnd.github+json",
+      "User-Agent": "star-electric-tender-tracker",
+    },
+  });
+  if (!who.ok) return json(env, { error: "Could not read the GitHub account" }, 400);
+  const user = await who.json();
+
+  const allowed = String(cfg(env, "ALLOWED_LOGINS") || "")
+    .split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+  if (allowed.length && allowed.indexOf(String(user.login).toLowerCase()) < 0) {
+    return json(env, { error: user.login + " is not allowed to edit this tracker" }, 403);
+  }
+  return json(env, { access_token: d.access_token, login: user.login });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -246,6 +311,12 @@ export default {
       const s = await sessionFrom(request, env);
       return json(env, s ? { login: s.login, exp: s.exp } : { login: null },
                   s ? 200 : 401);
+    }
+    if (url.pathname === "/device/start" && request.method === "POST") {
+      return handleDeviceStart(env);
+    }
+    if (url.pathname === "/device/poll" && request.method === "POST") {
+      return handleDevicePoll(request, env);
     }
     if (url.pathname === "/") {
       return json(env, { service: "star-electric-tender-tracker", ok: true });
