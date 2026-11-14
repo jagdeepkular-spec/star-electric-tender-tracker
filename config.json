@@ -1,5 +1,5 @@
 {
   "worker_url": "https://star-tender-auth.jagdeep-kular.workers.dev",
   "_comment": "The sign-in Worker, and the build every device should be running. Bump app_version whenever index.html changes so stale phones refresh themselves.",
-  "app_version": "20261114-0254"
+  "app_version": "20261114-0309"
 }

@@ -141,8 +141,8 @@ tbody tr.row.sel{background:#dbe8fd}
   <nav>
    <button onclick="exportCsv()">Export tender CSV</button>
    <button onclick="exportJson()">Export data.json</button>
-   <button onclick="reload()">Reload from GitHub</button>
-   <button onclick="connectGitHub()" id="navSync">Sign in&hellip;</button>
+   <button onclick="reload()">Reload</button>
+   <button onclick="connectGitHub()" id="navSync">Private link</button>
   </nav>
   <div class="sidefoot" id="syncFoot">Checking sharing&hellip;</div>
  </aside>
@@ -261,11 +261,8 @@ function rows(res){
 }
 
 var STORE_KEY = "star-tender-tracker-v1";
-var TOKEN_KEY = "star-tender-github-token";     // pasted personal access token
-var SESSION_KEY = "star-tender-session";        // signed session from the Worker
-var LOGIN_KEY = "star-tender-login";
-var WORKER = "";                                // filled from config.json
-var APP_VERSION = "20261114-0254";             // build stamp, checked against config.json
+var WORKER = "";                            // filled from config.json
+var APP_VERSION = "20261114-0309";         // build stamp, checked against config.json
 var LOGIN = "";
 var GH = {owner:"jagdeepkular-spec", repo:"star-electric-tender-tracker",
           branch:"main", file:"data.json"};
@@ -273,36 +270,8 @@ var DATA_SHA = null;          // sha of data.json as we last read it
 var SYNCED = false;           // true once a token is present and working
 var PATCH = {tenders:{}, deleted:[], extraTenders:[], consignees:{}, pdfs:{}};
 
-function ghToken(){ try{ return localStorage.getItem(TOKEN_KEY)||""; }catch(e){ return ""; } }
-function ghSession(){ try{ return localStorage.getItem(SESSION_KEY)||""; }catch(e){ return ""; } }
-function canWrite(){ return !!(ghSession() || ghToken()); }
+function canWrite(){ return !!appKey(); }
 
-// A sign-in hands the page a signed session in the URL fragment. Take it,
-// stash it, and scrub it off the address bar straight away.
-function takeSessionFromUrl(){
- var h = location.hash || "";
- if(h.indexOf("session=")<0 && h.indexOf("error=")<0) return null;
- var p = new URLSearchParams(h.replace(/^#/,""));
- var err = p.get("error");
- history.replaceState(null,"",location.pathname+location.search);
- if(err) return {error:err};
- var tok = p.get("session");
- if(!tok) return null;
- try{
-  localStorage.setItem(SESSION_KEY, tok);
-  localStorage.setItem(LOGIN_KEY, p.get("login")||"");
- }catch(e){ return {error:"this browser would not store the sign-in"}; }
- return {login:p.get("login")||""};
-}
-function ghHeaders(extra){
- var h = {"Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"};
- var t = ghToken();
- if(t) h["Authorization"] = "Bearer "+t;   // reads only; writes go through ghWrite
- return Object.assign(h, extra||{});
-}
-function ghUrl(path){
- return "https://api.github.com/repos/"+GH.owner+"/"+GH.repo+"/contents/"+path;
-}
 function b64ToStr(b64){
  var bin = atob(String(b64).replace(/\n/g,""));
  var u = new Uint8Array(bin.length);
@@ -315,42 +284,64 @@ function strToB64(str){
  return btoa(s);
 }
 
-// Always read through the API: it returns the newest commit's content, where a
-// plain file request can be served from a CDN cache minutes behind.
-async function ghReadData(){
- var res = await fetch(ghUrl(GH.file)+"?ref="+GH.branch,
-                       {headers:ghHeaders(), cache:"no-store"});
- if(!res.ok) throw new Error("GitHub read failed: HTTP "+res.status);
- var j = await res.json();
- DATA_SHA = j.sha;
- return JSON.parse(b64ToStr(j.content));
+// ---- the key ---------------------------------------------------------
+// The register lives in Cloudflare, not in the repository, and the key in
+// the bookmark link is what unlocks it. It arrives in the fragment (#k=...)
+// which browsers never send to a server, and is kept in this browser only.
+var KEY_KEY = "star-tender-key";
+function appKey(){ try{ return localStorage.getItem(KEY_KEY)||""; }catch(e){ return ""; } }
+function takeKeyFromUrl(){
+ var h = location.hash||"";
+ if(h.indexOf("k=")<0) return;
+ var k = new URLSearchParams(h.replace(/^#/,"")).get("k");
+ if(!k) return;
+ try{ localStorage.setItem(KEY_KEY, k); }catch(e){}
+ history.replaceState(null,"",location.pathname+location.search);
+}
+function keyHeaders(extra){
+ return Object.assign({"Authorization":"Bearer "+appKey()}, extra||{});
 }
 
-async function ghWrite(path, contentB64, message, sha){
- var res;
- if(ghSession()){
-  res = await fetch(WORKER+"/commit", {method:"POST",
-   headers:{"Content-Type":"application/json","Authorization":"Bearer "+ghSession()},
-   body:JSON.stringify({path:path, content:contentB64, message:message, sha:sha||null})});
-  if(res.status===401){
-   try{ localStorage.removeItem(SESSION_KEY); }catch(e){}
-   SYNCED=false; setSync("off");
-   throw new Error("your sign-in expired - sign in again");
-  }
- }else{
-  var body = {message:message, content:contentB64, branch:GH.branch};
-  if(sha) body.sha = sha;
-  res = await fetch(ghUrl(path), {method:"PUT", headers:ghHeaders(
-    {"Content-Type":"application/json"}), body:JSON.stringify(body)});
- }
- if(res.status===409 || res.status===422){
-  var e=new Error("conflict"); e.conflict=true; throw e;
- }
+async function storeRead(){
+ var res = await fetch(WORKER+"/data", {headers:keyHeaders(), cache:"no-store"});
+ if(res.status===401){ var e=new Error("this link is missing its key"); e.noKey=true; throw e; }
+ if(!res.ok) throw new Error("read failed: HTTP "+res.status);
+ var j = await res.json();
+ if(j.empty) return null;           // nothing stored yet - the caller seeds it
+ return j.data;
+}
+
+async function ghReadData(){
+ var d = await storeRead();
+ if(d) return d;
+ // First run against empty storage: seed it from the copy still in the repo.
+ var seed = await (await fetch("data.json?t="+Date.now(),{cache:"no-store"})).json();
+ await storePut("/data", seed);
+ return seed;
+}
+
+async function storePut(path, body){
+ var res = await fetch(WORKER+path, {method:"PUT",
+   headers:keyHeaders({"Content-Type":"application/json"}),
+   body:JSON.stringify(body)});
+ if(res.status===401){ var e=new Error("this link is missing its key"); e.noKey=true; throw e; }
  if(!res.ok){
-  var txt=""; try{ txt=(await res.json()).message||""; }catch(_){}
+  var txt=""; try{ txt=(await res.json()).error||""; }catch(_){}
   throw new Error("HTTP "+res.status+(txt?" - "+txt:""));
  }
  return await res.json();
+}
+
+// Kept under the old name so every caller stays as it was. "data.json" is the
+// register; "pdfs/<tender>.pdf" is a tabulation. Both now go to Cloudflare.
+async function ghWrite(path, contentB64, message, sha){
+ if(path === GH.file || path === "data.json"){
+  return await storePut("/data", JSON.parse(b64ToStr(contentB64)));
+ }
+ var m = /^pdfs\/(.+)$/.exec(path);
+ if(m) return await storePut("/pdf/"+m[1].replace(/[^A-Za-z0-9._-]/g,"_"),
+                             {content:contentB64});
+ throw new Error("nothing writes to "+path+" any more");
 }
 
 function currentData(){
@@ -402,7 +393,7 @@ async function doPush(what){
     }catch(e2){ /* fall through to the error below */ }
    }
    setSync("error");
-   toast("Could not save to GitHub: "+(e.message||e)+
+   toast("Could not save: "+(e.message||e)+
          "\nYour change is kept in this browser.",1);
    return false;
   }
@@ -414,7 +405,7 @@ function updateFoot(){
  if(!el) return;
  var n=pendingCount();
  el.textContent = T.length+" tenders • "+
-  (SYNCED ? "shared via GitHub"
+  (SYNCED ? "saved for every device"
           : (n ? (n+" change"+(n>1?"s":"")+" not shared yet") : "view only on this device"));
 }
 function pendingCount(){
@@ -441,159 +432,51 @@ function setBanner(){
  el.innerHTML = "<span>" + (n
   ? ("<b>"+n+" change"+(n>1?"s":"")+" on this device "+(n>1?"are":"is")+" not shared.</b> "+
      "The list below is up to date, but "+(n>1?"these edits":"this edit")+" cannot reach "+
-     "your other devices until you turn on sharing here.")
+     "your other devices until this device has the key.")
   : ("<b>This device can view everything but cannot save changes.</b> "+
-     "The list below is the shared, up-to-date register. Turn on sharing to edit from here."))+
+     "The list below is the shared, up-to-date register."))+
   "</span><div class='sp'></div>"+
   "<button class='btn' onclick='connectGitHub()'>"+
-  (WORKER ? "Sign in with GitHub" : "Turn on sharing")+"</button>";
+  "What is this?"+"</button>";
 }
 
 function setSync(state){
  var foot=document.getElementById("syncFoot"), nav=document.getElementById("navSync");
  if(!foot) return;
- if(state==="ok"){ foot.innerHTML = LOGIN
-    ? ("Signed in as "+esc(LOGIN)+".<br>Changes are shared.")
-    : "Shared with every device.<br>Saved to GitHub.";
-                   nav.textContent = LOGIN ? ("Signed in: "+LOGIN) : "Sharing: on"; }
- else if(state==="saving"){ foot.innerHTML="Saving to GitHub&hellip;"; }
- else if(state==="error"){ foot.innerHTML="Last save to GitHub failed.<br>Change kept locally.";
+ if(state==="ok"){ foot.innerHTML="Private link active.<br>Changes reach every device.";
+                   nav.textContent="Private link"; }
+ else if(state==="saving"){ foot.innerHTML="Saving&hellip;"; }
+ else if(state==="error"){ foot.innerHTML="The last save failed.<br>Change kept on this device.";
                            nav.textContent="Sharing: check";
                            var b=document.getElementById("note");
                            if(b){ b.style.display=""; b.className="note warn";
-                            b.innerHTML="<span><b>The last save to GitHub failed.</b> Your change is "+
-                             "kept in this browser. Check the token under Sharing, then edit again "+
-                             "to retry.</span><div class='sp'></div>"+
-                             "<button class='btn' onclick='connectGitHub()'>Sharing</button>"; }
+                            b.innerHTML="<span><b>The last save failed.</b> Your change is "+
+                             "kept in this browser. Reload, then edit again to retry."+
+                             "</span>"; }
                            return; }
+ else if(state==="nokey"){ foot.innerHTML="This link is missing its key.<br>Open your private link.";
+        nav.textContent="No key"; }
  else { foot.innerHTML="Viewing the shared register.<br>Saving is off on this device.";
         nav.textContent="Sharing: off"; }
  setBanner();
  updateFoot();
 }
 
-// Signing in uses GitHub's device flow: the page asks the Worker for a short
-// code, the person types it at github.com/login/device, and the Worker hands
-// back a token for this browser. Nothing has to be copied by hand and no
-// secret is involved.
-var DEVICE_STOP = false;
-
-function deviceBox(code, uri){
- var m=document.getElementById("modal"), i=document.getElementById("mInput");
- document.getElementById("mTitle").textContent="Sign in with GitHub";
- document.getElementById("mLabel").innerHTML =
-   "1. Open <b>"+esc(uri)+"</b><br>2. Type this code, then approve.<br>"+
-   "<span class='muted2'>This window closes by itself once you have.</span>";
- i.type="text"; i.value=code;
- document.getElementById("mOk").textContent="Open GitHub";
- document.getElementById("mCancel").textContent="Cancel";
- m.className="modal on";
- setTimeout(function(){ i.focus(); i.select(); },30);
- document.getElementById("mOk").onclick=function(){
-   window.open(uri,"_blank","noopener");
- };
- document.getElementById("mCancel").onclick=function(){ DEVICE_STOP=true; closeDeviceBox(); };
-}
-function closeDeviceBox(){
- document.getElementById("modal").className="modal";
- document.getElementById("mOk").textContent="Save";
- document.getElementById("mCancel").textContent="Cancel";
- document.getElementById("mOk").onclick=null;
- document.getElementById("mCancel").onclick=null;
-}
-
-async function signInWithGitHub(){
- DEVICE_STOP=false;
- var start;
- try{
-  var r=await fetch(WORKER+"/device/start",{method:"POST"});
-  start=await r.json();
-  if(start.error) throw new Error(start.error);
- }catch(e){ toast("Could not start the sign-in: "+(e.message||e),1); return; }
-
- deviceBox(start.user_code, start.verification_uri);
-
- var wait=(start.interval||5)*1000;
- var until=Date.now()+(start.expires_in||900)*1000;
- while(!DEVICE_STOP && Date.now()<until){
-  await new Promise(function(f){ setTimeout(f,wait); });
-  if(DEVICE_STOP) return;
-  var d;
-  try{
-   var p=await fetch(WORKER+"/device/poll",{method:"POST",
-     headers:{"Content-Type":"application/json"},
-     body:JSON.stringify({device_code:start.device_code})});
-   d=await p.json();
-  }catch(e){ continue; }          // a dropped request is worth another try
-  if(d.pending){ if(d.interval) wait=d.interval*1000; continue; }
-  if(d.error){ closeDeviceBox(); toast(d.error,1); return; }
-  if(d.access_token){ closeDeviceBox(); await useDeviceToken(d.access_token, d.login); return; }
- }
- if(!DEVICE_STOP){ closeDeviceBox(); toast("The sign-in code expired. Try again.",1); }
-}
-
-async function useDeviceToken(token, login){
- try{
-  localStorage.setItem(TOKEN_KEY, token);
-  localStorage.setItem(LOGIN_KEY, login||"");
- }catch(e){ toast("This browser would not store the sign-in.",1); return; }
- LOGIN = login||"";
- setSync("saving");
- try{
-  await ghReadData();
-  await ghWrite(GH.file, strToB64(JSON.stringify(currentData(),null,2)),
-                "Sign in from browser", DATA_SHA);
-  await ghReadData();
-  SYNCED=true; setSync("ok");
-  PATCH={tenders:{},deleted:[],extraTenders:[],consignees:{},pdfs:PATCH.pdfs}; savePatch();
-  toast("Signed in as "+(LOGIN||"GitHub")+". Changes from this device now reach every device.");
- }catch(e){
-  try{ localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(LOGIN_KEY); }catch(_){}
-  SYNCED=false; LOGIN=""; setSync("error");
-  toast("The sign-in did not work: "+(e.message||e),1);
- }
-}
-
 async function connectGitHub(){
- if(!SYNCED && WORKER){ signInWithGitHub(); return; }
- if(SYNCED && ghSession()){
-  var out = await askConfirm("Signed in as "+(LOGIN||"GitHub"),
-    "Changes from this device are saved for everyone. Sign out on this device?","Sign out");
-  if(out){ try{ localStorage.removeItem(SESSION_KEY); localStorage.removeItem(LOGIN_KEY); }catch(e){}
-           SYNCED=false; LOGIN=""; setSync("off"); toast("Signed out on this device."); }
+ if(appKey()){
+  var out = await askConfirm("Private link active",
+    "This device holds the key from your private link, so changes you make "+
+    "here are saved and reach every other device. Forget the key on this "+
+    "device? It will then be able to read nothing until you open the private "+
+    "link again.", "Forget it");
+  if(out){ try{ localStorage.removeItem(KEY_KEY); }catch(e){}
+           SYNCED=false; setSync("nokey");
+           toast("Key forgotten on this device."); }
   return;
  }
- if(SYNCED){
-  var off=await askConfirm(LOGIN?("Signed in as "+LOGIN):"Sharing is on",
-   "Changes on this device are saved to GitHub and reach every device. "+
-   "Turn sharing off on this device?","Turn off");
-  if(off){ try{ localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(LOGIN_KEY); }catch(e){}
-           SYNCED=false; LOGIN=""; setSync("off"); toast("Signed out on this device."); }
-  return;
- }
- var v=await askText("Turn on sharing",
-  "Paste a GitHub token with Contents read and write on this repository. "+
-  "Each device needs this once - the same token works on all of them. It is "+
-  "stored only in this browser and sent only to github.com.",
-  "", "password");
- if(v===null) return;
- v=String(v).trim();
- if(!v) return;
- try{ localStorage.setItem(TOKEN_KEY, v); }catch(e){ toast("This browser would not store the token.",1); return; }
- setSync("saving");
- try{
-  var base=await ghReadData();     // proves the token can read
-  await ghWrite(GH.file, strToB64(JSON.stringify(currentData(),null,2)),
-                "Enable sharing from browser", DATA_SHA);  // proves it can write
-  await ghReadData();
-  SYNCED=true; setSync("ok");
-  PATCH={tenders:{},deleted:[],extraTenders:[],consignees:{},pdfs:PATCH.pdfs}; savePatch();
-  toast("Sharing is on. Changes from this device now reach every device.");
- }catch(e){
-  try{ localStorage.removeItem(TOKEN_KEY); }catch(_){}
-  SYNCED=false; setSync("error");
-  toast("That token did not work: "+(e.message||e),1);
- }
+ await askConfirm("This link is missing its key",
+  "The register lives behind a private link. Open the bookmark that ends in "+
+  "#k=... and this device will remember it.", "OK");
 }
 
 function loadPatch(){
@@ -630,6 +513,7 @@ function applyPatch(base){
 
 var BASE = {tenders:[], consignees:[]};
 (async function(){
+ takeKeyFromUrl();
  loadPatch();
  try{
   var cfg = await (await fetch("config.json?t="+Date.now(),{cache:"no-store"})).json();
@@ -646,29 +530,31 @@ var BASE = {tenders:[], consignees:[]};
   }
  }catch(e){ WORKER = ""; }
 
- var landed = takeSessionFromUrl();
- if(landed && landed.error) toast("Sign-in failed: "+landed.error, 1);
- try{ LOGIN = localStorage.getItem(LOGIN_KEY)||""; }catch(e){ LOGIN=""; }
+ if(!appKey()){
+  document.getElementById("tablebox").innerHTML =
+   '<div class="empty">This link is missing its key.<br><br>' +
+   'Open the private bookmark link instead - the one ending in <b>#k=...</b> - ' +
+   'and this device will remember it.</div>';
+  setSync("nokey");
+  return;
+ }
 
  try{
   BASE = await ghReadData();
   SYNCED = canWrite();
  }catch(e){
-  // No API (rate limit, offline): fall back to the committed copy, read-only sharing.
-  try{
-   var res = await fetch("data.json?t="+Date.now(), {cache:"no-store"});
-   if(!res.ok) throw new Error("HTTP "+res.status);
-   BASE = await res.json();
-  }catch(e2){ fail("Could not load the register: "+e2.message); return; }
+  if(e.noKey){
+   document.getElementById("tablebox").innerHTML =
+    '<div class="empty">This key is not the right one for this register.<br><br>'+
+    'Open your private link again.</div>';
+   setSync("nokey"); return;
+  }
+  fail("Could not load the register: "+(e.message||e)); return;
  }
  var merged = applyPatch(BASE);
  T = merged.tenders; C = merged.consignees;
  READY = true;
  setSync(SYNCED ? "ok" : "off");
- if(landed && landed.login && SYNCED){
-  toast("Signed in as "+landed.login+". Changes from this device are shared.");
-  pushData("Sign in from browser");
- }
  setBanner();
  render();
 })();
@@ -947,17 +833,25 @@ function b64decode(b64){
  return u;
 }
 function closePdf(){}
-function pdfHref(t){
- if(t.pdf_url) return t.pdf_url;
+function localPdfHref(t){
  var b = (PATCH.pdfs||{})[t.tender_number];
  return b ? URL.createObjectURL(new Blob([b64decode(b)],{type:"application/pdf"})) : null;
 }
-function viewPdf(tn){
+// A stored tabulation is fetched with the key and handed to the browser as a
+// blob, so the key never appears in an address the viewer could leak.
+async function viewPdf(tn){
  var t = T.filter(function(x){return x.tender_number===tn;})[0];
  if(!t) return;
- var href = pdfHref(t);
- if(!href){ toast("No tabulation PDF for "+tn+" yet. Drop its PDF on the box above.",1); return; }
- window.open(href, "_blank");
+ var here = localPdfHref(t);
+ if(here){ window.open(here,"_blank"); return; }
+ if(!t.pdf_url){ toast("No tabulation PDF for "+tn+" yet. Drop its PDF on the box above.",1); return; }
+ var name = String(t.pdf_url).replace(/^pdfs\//,"").replace(/[^A-Za-z0-9._-]/g,"_");
+ toast("Opening the tabulation\u2026");
+ try{
+  var res = await fetch(WORKER+"/pdf/"+name, {headers:keyHeaders(), cache:"no-store"});
+  if(!res.ok) throw new Error("HTTP "+res.status);
+  window.open(URL.createObjectURL(await res.blob()), "_blank");
+ }catch(e){ toast("Could not open that tabulation: "+(e.message||e),1); }
 }
 
 // ---- PDF import ------------------------------------------------------
@@ -973,18 +867,13 @@ async function upsertParsed(r){
   PATCH.pdfs[tn] = r.pdf_b64;
   fields.pdf_name = r.pdf_name || "";
   if(SYNCED){
-   // Commit the tabulation too, so Open works on every device, not just this one.
-   var path = "pdfs/"+tn+".pdf", sha = null;
+   // Store the tabulation too, so Open works on every device, not just this one.
+   var path = "pdfs/"+tn+".pdf";
    try{
-    var head = await fetch(ghUrl(path)+"?ref="+GH.branch,
-                           {headers:ghHeaders(), cache:"no-store"});
-    if(head.ok) sha = (await head.json()).sha;
-   }catch(e){ }
-   try{
-    await ghWrite(path, r.pdf_b64, "Add tabulation for "+tn, sha);
+    await ghWrite(path, r.pdf_b64, "Add tabulation for "+tn, null);
     fields.pdf_url = path;
     delete PATCH.pdfs[tn];
-   }catch(e){ r.warnings.push("tabulation PDF not uploaded ("+(e.message||e)+")"); }
+   }catch(e){ r.warnings.push("tabulation PDF not stored ("+(e.message||e)+")"); }
   }
  }
  if(existing){
