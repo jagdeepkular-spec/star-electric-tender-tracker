@@ -1,4 +1,4 @@
 {
-  "worker_url": "",
-  "_comment": "Paste the deployed Worker URL here, e.g. https://star-tender-auth.<subdomain>.workers.dev - with it set, the tracker offers Sign in with GitHub instead of asking for a token."
+  "worker_url": "https://star-tender-auth.jagdeep-kular.workers.dev",
+  "_comment": "The sign-in Worker. Clear this to fall back to asking for a personal access token."
 }
